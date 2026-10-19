@@ -1,5 +1,5 @@
 {
-  "name": "vs-test",
+  "name": "geo-index",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -12,9 +12,9 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "canvas-confetti": "^1.9.4",
-    "country-flag-icons": "^1.6.20",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.59.0",
+    "polygon-clipping": "^0.15.7",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-leaflet": "^5.0.0",
@@ -28,7 +28,6 @@
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "oxlint": "^1.81.0",
-    "polygon-clipping": "^0.15.7",
     "typescript": "~6.0.2",
     "vite": "^8.3.0"
   }
