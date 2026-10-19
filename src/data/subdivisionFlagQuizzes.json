@@ -1,0 +1,1544 @@
+[
+  {
+    "id": "usa-state-flags",
+    "title": "USA: State Flags (50)",
+    "category": "flags",
+    "format": "flag",
+    "countryOrRegion": "United States",
+    "flagItems": [
+      {
+        "name": "Alabama",
+        "imageUrl": "/data/flags/usa/al.svg",
+        "code": "AL",
+        "subtext": "South",
+        "aliases": [
+          "AL"
+        ]
+      },
+      {
+        "name": "Alaska",
+        "imageUrl": "/data/flags/usa/ak.svg",
+        "code": "AK",
+        "subtext": "West",
+        "aliases": [
+          "AK"
+        ]
+      },
+      {
+        "name": "Arizona",
+        "imageUrl": "/data/flags/usa/az.svg",
+        "code": "AZ",
+        "subtext": "West",
+        "aliases": [
+          "AZ"
+        ]
+      },
+      {
+        "name": "Arkansas",
+        "imageUrl": "/data/flags/usa/ar.svg",
+        "code": "AR",
+        "subtext": "South",
+        "aliases": [
+          "AR"
+        ]
+      },
+      {
+        "name": "California",
+        "imageUrl": "/data/flags/usa/ca.svg",
+        "code": "CA",
+        "subtext": "West",
+        "aliases": [
+          "CA"
+        ]
+      },
+      {
+        "name": "Colorado",
+        "imageUrl": "/data/flags/usa/co.svg",
+        "code": "CO",
+        "subtext": "West",
+        "aliases": [
+          "CO"
+        ]
+      },
+      {
+        "name": "Connecticut",
+        "imageUrl": "/data/flags/usa/ct.svg",
+        "code": "CT",
+        "subtext": "Northeast",
+        "aliases": [
+          "CT"
+        ]
+      },
+      {
+        "name": "Delaware",
+        "imageUrl": "/data/flags/usa/de.svg",
+        "code": "DE",
+        "subtext": "South",
+        "aliases": [
+          "DE"
+        ]
+      },
+      {
+        "name": "Florida",
+        "imageUrl": "/data/flags/usa/fl.svg",
+        "code": "FL",
+        "subtext": "South",
+        "aliases": [
+          "FL"
+        ]
+      },
+      {
+        "name": "Georgia",
+        "imageUrl": "/data/flags/usa/ga.svg",
+        "code": "GA",
+        "subtext": "South",
+        "aliases": [
+          "GA"
+        ]
+      },
+      {
+        "name": "Hawaii",
+        "imageUrl": "/data/flags/usa/hi.svg",
+        "code": "HI",
+        "subtext": "West",
+        "aliases": [
+          "HI"
+        ]
+      },
+      {
+        "name": "Idaho",
+        "imageUrl": "/data/flags/usa/id.svg",
+        "code": "ID",
+        "subtext": "West",
+        "aliases": [
+          "ID"
+        ]
+      },
+      {
+        "name": "Illinois",
+        "imageUrl": "/data/flags/usa/il.svg",
+        "code": "IL",
+        "subtext": "Midwest",
+        "aliases": [
+          "IL"
+        ]
+      },
+      {
+        "name": "Indiana",
+        "imageUrl": "/data/flags/usa/in.svg",
+        "code": "IN",
+        "subtext": "Midwest",
+        "aliases": [
+          "IN"
+        ]
+      },
+      {
+        "name": "Iowa",
+        "imageUrl": "/data/flags/usa/ia.svg",
+        "code": "IA",
+        "subtext": "Midwest",
+        "aliases": [
+          "IA"
+        ]
+      },
+      {
+        "name": "Kansas",
+        "imageUrl": "/data/flags/usa/ks.svg",
+        "code": "KS",
+        "subtext": "Midwest",
+        "aliases": [
+          "KS"
+        ]
+      },
+      {
+        "name": "Kentucky",
+        "imageUrl": "/data/flags/usa/ky.svg",
+        "code": "KY",
+        "subtext": "South",
+        "aliases": [
+          "KY"
+        ]
+      },
+      {
+        "name": "Louisiana",
+        "imageUrl": "/data/flags/usa/la.svg",
+        "code": "LA",
+        "subtext": "South",
+        "aliases": [
+          "LA"
+        ]
+      },
+      {
+        "name": "Maine",
+        "imageUrl": "/data/flags/usa/me.svg",
+        "code": "ME",
+        "subtext": "Northeast",
+        "aliases": [
+          "ME"
+        ]
+      },
+      {
+        "name": "Maryland",
+        "imageUrl": "/data/flags/usa/md.svg",
+        "code": "MD",
+        "subtext": "South",
+        "aliases": [
+          "MD"
+        ]
+      },
+      {
+        "name": "Massachusetts",
+        "imageUrl": "/data/flags/usa/ma.svg",
+        "code": "MA",
+        "subtext": "Northeast",
+        "aliases": [
+          "MA"
+        ]
+      },
+      {
+        "name": "Michigan",
+        "imageUrl": "/data/flags/usa/mi.svg",
+        "code": "MI",
+        "subtext": "Midwest",
+        "aliases": [
+          "MI"
+        ]
+      },
+      {
+        "name": "Minnesota",
+        "imageUrl": "/data/flags/usa/mn.svg",
+        "code": "MN",
+        "subtext": "Midwest",
+        "aliases": [
+          "MN"
+        ]
+      },
+      {
+        "name": "Mississippi",
+        "imageUrl": "/data/flags/usa/ms.svg",
+        "code": "MS",
+        "subtext": "South",
+        "aliases": [
+          "MS"
+        ]
+      },
+      {
+        "name": "Missouri",
+        "imageUrl": "/data/flags/usa/mo.svg",
+        "code": "MO",
+        "subtext": "Midwest",
+        "aliases": [
+          "MO"
+        ]
+      },
+      {
+        "name": "Montana",
+        "imageUrl": "/data/flags/usa/mt.svg",
+        "code": "MT",
+        "subtext": "West",
+        "aliases": [
+          "MT"
+        ]
+      },
+      {
+        "name": "Nebraska",
+        "imageUrl": "/data/flags/usa/ne.svg",
+        "code": "NE",
+        "subtext": "Midwest",
+        "aliases": [
+          "NE"
+        ]
+      },
+      {
+        "name": "Nevada",
+        "imageUrl": "/data/flags/usa/nv.svg",
+        "code": "NV",
+        "subtext": "West",
+        "aliases": [
+          "NV"
+        ]
+      },
+      {
+        "name": "New Hampshire",
+        "imageUrl": "/data/flags/usa/nh.svg",
+        "code": "NH",
+        "subtext": "Northeast",
+        "aliases": [
+          "NH"
+        ]
+      },
+      {
+        "name": "New Jersey",
+        "imageUrl": "/data/flags/usa/nj.svg",
+        "code": "NJ",
+        "subtext": "Northeast",
+        "aliases": [
+          "NJ"
+        ]
+      },
+      {
+        "name": "New Mexico",
+        "imageUrl": "/data/flags/usa/nm.svg",
+        "code": "NM",
+        "subtext": "West",
+        "aliases": [
+          "NM"
+        ]
+      },
+      {
+        "name": "New York",
+        "imageUrl": "/data/flags/usa/ny.svg",
+        "code": "NY",
+        "subtext": "Northeast",
+        "aliases": [
+          "NY"
+        ]
+      },
+      {
+        "name": "North Carolina",
+        "imageUrl": "/data/flags/usa/nc.svg",
+        "code": "NC",
+        "subtext": "South",
+        "aliases": [
+          "NC"
+        ]
+      },
+      {
+        "name": "North Dakota",
+        "imageUrl": "/data/flags/usa/nd.svg",
+        "code": "ND",
+        "subtext": "Midwest",
+        "aliases": [
+          "ND"
+        ]
+      },
+      {
+        "name": "Ohio",
+        "imageUrl": "/data/flags/usa/oh.svg",
+        "code": "OH",
+        "subtext": "Midwest",
+        "aliases": [
+          "OH"
+        ]
+      },
+      {
+        "name": "Oklahoma",
+        "imageUrl": "/data/flags/usa/ok.svg",
+        "code": "OK",
+        "subtext": "South",
+        "aliases": [
+          "OK"
+        ]
+      },
+      {
+        "name": "Oregon",
+        "imageUrl": "/data/flags/usa/or.svg",
+        "code": "OR",
+        "subtext": "West",
+        "aliases": [
+          "OR"
+        ]
+      },
+      {
+        "name": "Pennsylvania",
+        "imageUrl": "/data/flags/usa/pa.svg",
+        "code": "PA",
+        "subtext": "Northeast",
+        "aliases": [
+          "PA"
+        ]
+      },
+      {
+        "name": "Rhode Island",
+        "imageUrl": "/data/flags/usa/ri.svg",
+        "code": "RI",
+        "subtext": "Northeast",
+        "aliases": [
+          "RI"
+        ]
+      },
+      {
+        "name": "South Carolina",
+        "imageUrl": "/data/flags/usa/sc.svg",
+        "code": "SC",
+        "subtext": "South",
+        "aliases": [
+          "SC"
+        ]
+      },
+      {
+        "name": "South Dakota",
+        "imageUrl": "/data/flags/usa/sd.svg",
+        "code": "SD",
+        "subtext": "Midwest",
+        "aliases": [
+          "SD"
+        ]
+      },
+      {
+        "name": "Tennessee",
+        "imageUrl": "/data/flags/usa/tn.svg",
+        "code": "TN",
+        "subtext": "South",
+        "aliases": [
+          "TN"
+        ]
+      },
+      {
+        "name": "Texas",
+        "imageUrl": "/data/flags/usa/tx.svg",
+        "code": "TX",
+        "subtext": "South",
+        "aliases": [
+          "TX"
+        ]
+      },
+      {
+        "name": "Utah",
+        "imageUrl": "/data/flags/usa/ut.svg",
+        "code": "UT",
+        "subtext": "West",
+        "aliases": [
+          "UT"
+        ]
+      },
+      {
+        "name": "Vermont",
+        "imageUrl": "/data/flags/usa/vt.svg",
+        "code": "VT",
+        "subtext": "Northeast",
+        "aliases": [
+          "VT"
+        ]
+      },
+      {
+        "name": "Virginia",
+        "imageUrl": "/data/flags/usa/va.svg",
+        "code": "VA",
+        "subtext": "South",
+        "aliases": [
+          "VA"
+        ]
+      },
+      {
+        "name": "Washington",
+        "imageUrl": "/data/flags/usa/wa.svg",
+        "code": "WA",
+        "subtext": "West",
+        "aliases": [
+          "WA"
+        ]
+      },
+      {
+        "name": "West Virginia",
+        "imageUrl": "/data/flags/usa/wv.svg",
+        "code": "WV",
+        "subtext": "South",
+        "aliases": [
+          "WV"
+        ]
+      },
+      {
+        "name": "Wisconsin",
+        "imageUrl": "/data/flags/usa/wi.svg",
+        "code": "WI",
+        "subtext": "Midwest",
+        "aliases": [
+          "WI"
+        ]
+      },
+      {
+        "name": "Wyoming",
+        "imageUrl": "/data/flags/usa/wy.svg",
+        "code": "WY",
+        "subtext": "West",
+        "aliases": [
+          "WY"
+        ]
+      }
+    ],
+    "totalItems": 50,
+    "tags": [
+      "USA",
+      "1st-level-flags",
+      "flags"
+    ]
+  },
+  {
+    "id": "bra-state-flags",
+    "title": "Brazil: State Flags (27)",
+    "category": "flags",
+    "format": "flag",
+    "countryOrRegion": "Brazil",
+    "flagItems": [
+      {
+        "name": "Acre",
+        "imageUrl": "/data/flags/bra/ac.svg",
+        "code": "AC",
+        "subtext": "North",
+        "aliases": [
+          "AC"
+        ]
+      },
+      {
+        "name": "Alagoas",
+        "imageUrl": "/data/flags/bra/al.svg",
+        "code": "AL",
+        "subtext": "Northeast",
+        "aliases": [
+          "AL"
+        ]
+      },
+      {
+        "name": "Amapá",
+        "imageUrl": "/data/flags/bra/ap.svg",
+        "code": "AP",
+        "subtext": "North",
+        "aliases": [
+          "Amapa",
+          "AP"
+        ]
+      },
+      {
+        "name": "Amazonas",
+        "imageUrl": "/data/flags/bra/am.svg",
+        "code": "AM",
+        "subtext": "North",
+        "aliases": [
+          "AM"
+        ]
+      },
+      {
+        "name": "Bahia",
+        "imageUrl": "/data/flags/bra/ba.svg",
+        "code": "BA",
+        "subtext": "Northeast",
+        "aliases": [
+          "BA"
+        ]
+      },
+      {
+        "name": "Ceará",
+        "imageUrl": "/data/flags/bra/ce.svg",
+        "code": "CE",
+        "subtext": "Northeast",
+        "aliases": [
+          "Ceara",
+          "CE"
+        ]
+      },
+      {
+        "name": "Distrito Federal",
+        "imageUrl": "/data/flags/bra/df.svg",
+        "code": "DF",
+        "subtext": "Central-West",
+        "aliases": [
+          "Federal District",
+          "Brasília",
+          "Brasilia",
+          "DF"
+        ]
+      },
+      {
+        "name": "Espírito Santo",
+        "imageUrl": "/data/flags/bra/es.svg",
+        "code": "ES",
+        "subtext": "Southeast",
+        "aliases": [
+          "Espirito Santo",
+          "ES"
+        ]
+      },
+      {
+        "name": "Goiás",
+        "imageUrl": "/data/flags/bra/go.svg",
+        "code": "GO",
+        "subtext": "Central-West",
+        "aliases": [
+          "Goias",
+          "GO"
+        ]
+      },
+      {
+        "name": "Maranhão",
+        "imageUrl": "/data/flags/bra/ma.svg",
+        "code": "MA",
+        "subtext": "Northeast",
+        "aliases": [
+          "Maranhao",
+          "MA"
+        ]
+      },
+      {
+        "name": "Mato Grosso",
+        "imageUrl": "/data/flags/bra/mt.svg",
+        "code": "MT",
+        "subtext": "Central-West",
+        "aliases": [
+          "MT"
+        ]
+      },
+      {
+        "name": "Mato Grosso do Sul",
+        "imageUrl": "/data/flags/bra/ms.svg",
+        "code": "MS",
+        "subtext": "Central-West",
+        "aliases": [
+          "MS"
+        ]
+      },
+      {
+        "name": "Minas Gerais",
+        "imageUrl": "/data/flags/bra/mg.svg",
+        "code": "MG",
+        "subtext": "Southeast",
+        "aliases": [
+          "MG"
+        ]
+      },
+      {
+        "name": "Pará",
+        "imageUrl": "/data/flags/bra/pa.svg",
+        "code": "PA",
+        "subtext": "North",
+        "aliases": [
+          "Para",
+          "PA"
+        ]
+      },
+      {
+        "name": "Paraíba",
+        "imageUrl": "/data/flags/bra/pb.svg",
+        "code": "PB",
+        "subtext": "Northeast",
+        "aliases": [
+          "Paraiba",
+          "PB"
+        ]
+      },
+      {
+        "name": "Paraná",
+        "imageUrl": "/data/flags/bra/pr.svg",
+        "code": "PR",
+        "subtext": "South",
+        "aliases": [
+          "Parana",
+          "PR"
+        ]
+      },
+      {
+        "name": "Pernambuco",
+        "imageUrl": "/data/flags/bra/pe.svg",
+        "code": "PE",
+        "subtext": "Northeast",
+        "aliases": [
+          "PE"
+        ]
+      },
+      {
+        "name": "Piauí",
+        "imageUrl": "/data/flags/bra/pi.svg",
+        "code": "PI",
+        "subtext": "Northeast",
+        "aliases": [
+          "Piaui",
+          "PI"
+        ]
+      },
+      {
+        "name": "Rio de Janeiro",
+        "imageUrl": "/data/flags/bra/rj.svg",
+        "code": "RJ",
+        "subtext": "Southeast",
+        "aliases": [
+          "RJ"
+        ]
+      },
+      {
+        "name": "Rio Grande do Norte",
+        "imageUrl": "/data/flags/bra/rn.svg",
+        "code": "RN",
+        "subtext": "Northeast",
+        "aliases": [
+          "RN"
+        ]
+      },
+      {
+        "name": "Rio Grande do Sul",
+        "imageUrl": "/data/flags/bra/rs.svg",
+        "code": "RS",
+        "subtext": "South",
+        "aliases": [
+          "RS"
+        ]
+      },
+      {
+        "name": "Rondônia",
+        "imageUrl": "/data/flags/bra/ro.svg",
+        "code": "RO",
+        "subtext": "North",
+        "aliases": [
+          "Rondonia",
+          "RO"
+        ]
+      },
+      {
+        "name": "Roraima",
+        "imageUrl": "/data/flags/bra/rr.svg",
+        "code": "RR",
+        "subtext": "North",
+        "aliases": [
+          "RR"
+        ]
+      },
+      {
+        "name": "Santa Catarina",
+        "imageUrl": "/data/flags/bra/sc.svg",
+        "code": "SC",
+        "subtext": "South",
+        "aliases": [
+          "SC"
+        ]
+      },
+      {
+        "name": "São Paulo",
+        "imageUrl": "/data/flags/bra/sp.svg",
+        "code": "SP",
+        "subtext": "Southeast",
+        "aliases": [
+          "Sao Paulo",
+          "SP"
+        ]
+      },
+      {
+        "name": "Sergipe",
+        "imageUrl": "/data/flags/bra/se.svg",
+        "code": "SE",
+        "subtext": "Northeast",
+        "aliases": [
+          "SE"
+        ]
+      },
+      {
+        "name": "Tocantins",
+        "imageUrl": "/data/flags/bra/to.svg",
+        "code": "TO",
+        "subtext": "North",
+        "aliases": [
+          "TO"
+        ]
+      }
+    ],
+    "totalItems": 27,
+    "tags": [
+      "BRA",
+      "1st-level-flags",
+      "flags"
+    ]
+  },
+  {
+    "id": "rus-subject-flags",
+    "title": "Russia: Federal Subject Flags (85)",
+    "category": "flags",
+    "format": "flag",
+    "countryOrRegion": "Russia",
+    "flagItems": [
+      {
+        "name": "Republic of Adygea",
+        "imageUrl": "/data/flags/rus/adygea.svg",
+        "code": "ADYGEA",
+        "subtext": "Republic",
+        "aliases": [
+          "Adygea",
+          "Adygeya"
+        ]
+      },
+      {
+        "name": "Altai Republic",
+        "imageUrl": "/data/flags/rus/altai-republic.svg",
+        "code": "ALTAI-REPUBLIC",
+        "subtext": "Republic",
+        "aliases": [
+          "Altai",
+          "Gorno-Altai"
+        ]
+      },
+      {
+        "name": "Republic of Bashkortostan",
+        "imageUrl": "/data/flags/rus/bashkortostan.svg",
+        "code": "BASHKORTOSTAN",
+        "subtext": "Republic",
+        "aliases": [
+          "Bashkortostan",
+          "Bashkiria"
+        ]
+      },
+      {
+        "name": "Republic of Buryatia",
+        "imageUrl": "/data/flags/rus/buryatia.svg",
+        "code": "BURYATIA",
+        "subtext": "Republic",
+        "aliases": [
+          "Buryatia"
+        ]
+      },
+      {
+        "name": "Chechen Republic",
+        "imageUrl": "/data/flags/rus/chechnya.svg",
+        "code": "CHECHNYA",
+        "subtext": "Republic",
+        "aliases": [
+          "Chechnya"
+        ]
+      },
+      {
+        "name": "Chuvash Republic",
+        "imageUrl": "/data/flags/rus/chuvashia.svg",
+        "code": "CHUVASHIA",
+        "subtext": "Republic",
+        "aliases": [
+          "Chuvashia"
+        ]
+      },
+      {
+        "name": "Republic of Dagestan",
+        "imageUrl": "/data/flags/rus/dagestan.svg",
+        "code": "DAGESTAN",
+        "subtext": "Republic",
+        "aliases": [
+          "Dagestan"
+        ]
+      },
+      {
+        "name": "Republic of Ingushetia",
+        "imageUrl": "/data/flags/rus/ingushetia.svg",
+        "code": "INGUSHETIA",
+        "subtext": "Republic",
+        "aliases": [
+          "Ingushetia"
+        ]
+      },
+      {
+        "name": "Kabardino-Balkarian Republic",
+        "imageUrl": "/data/flags/rus/kabardino-balkaria.svg",
+        "code": "KABARDINO-BALKARIA",
+        "subtext": "Republic",
+        "aliases": [
+          "Kabardino-Balkaria"
+        ]
+      },
+      {
+        "name": "Republic of Kalmykia",
+        "imageUrl": "/data/flags/rus/kalmykia.svg",
+        "code": "KALMYKIA",
+        "subtext": "Republic",
+        "aliases": [
+          "Kalmykia"
+        ]
+      },
+      {
+        "name": "Karachay-Cherkess Republic",
+        "imageUrl": "/data/flags/rus/karachay-cherkessia.svg",
+        "code": "KARACHAY-CHERKESSIA",
+        "subtext": "Republic",
+        "aliases": [
+          "Karachay-Cherkessia"
+        ]
+      },
+      {
+        "name": "Republic of Karelia",
+        "imageUrl": "/data/flags/rus/karelia.svg",
+        "code": "KARELIA",
+        "subtext": "Republic",
+        "aliases": [
+          "Karelia"
+        ]
+      },
+      {
+        "name": "Republic of Khakassia",
+        "imageUrl": "/data/flags/rus/khakassia.svg",
+        "code": "KHAKASSIA",
+        "subtext": "Republic",
+        "aliases": [
+          "Khakassia"
+        ]
+      },
+      {
+        "name": "Komi Republic",
+        "imageUrl": "/data/flags/rus/komi.svg",
+        "code": "KOMI",
+        "subtext": "Republic",
+        "aliases": [
+          "Komi"
+        ]
+      },
+      {
+        "name": "Mari El Republic",
+        "imageUrl": "/data/flags/rus/mari-el.svg",
+        "code": "MARI-EL",
+        "subtext": "Republic",
+        "aliases": [
+          "Mari El"
+        ]
+      },
+      {
+        "name": "Republic of Mordovia",
+        "imageUrl": "/data/flags/rus/mordovia.svg",
+        "code": "MORDOVIA",
+        "subtext": "Republic",
+        "aliases": [
+          "Mordovia"
+        ]
+      },
+      {
+        "name": "Republic of North Ossetia-Alania",
+        "imageUrl": "/data/flags/rus/north-ossetia.svg",
+        "code": "NORTH-OSSETIA",
+        "subtext": "Republic",
+        "aliases": [
+          "North Ossetia",
+          "North Ossetia-Alania",
+          "Alania"
+        ]
+      },
+      {
+        "name": "Sakha Republic",
+        "imageUrl": "/data/flags/rus/sakha.svg",
+        "code": "SAKHA",
+        "subtext": "Republic",
+        "aliases": [
+          "Sakha",
+          "Yakutia",
+          "Sakha (Yakutia)"
+        ]
+      },
+      {
+        "name": "Republic of Tatarstan",
+        "imageUrl": "/data/flags/rus/tatarstan.svg",
+        "code": "TATARSTAN",
+        "subtext": "Republic",
+        "aliases": [
+          "Tatarstan"
+        ]
+      },
+      {
+        "name": "Tuva Republic",
+        "imageUrl": "/data/flags/rus/tuva.svg",
+        "code": "TUVA",
+        "subtext": "Republic",
+        "aliases": [
+          "Tuva",
+          "Tyva"
+        ]
+      },
+      {
+        "name": "Udmurt Republic",
+        "imageUrl": "/data/flags/rus/udmurtia.svg",
+        "code": "UDMURTIA",
+        "subtext": "Republic",
+        "aliases": [
+          "Udmurtia"
+        ]
+      },
+      {
+        "name": "Republic of Crimea",
+        "imageUrl": "/data/flags/rus/crimea.svg",
+        "code": "CRIMEA",
+        "subtext": "Republic",
+        "aliases": [
+          "Crimea",
+          "Autonomous Republic of Crimea"
+        ]
+      },
+      {
+        "name": "Altai Krai",
+        "imageUrl": "/data/flags/rus/altai-krai.svg",
+        "code": "ALTAI-KRAI",
+        "subtext": "Krai",
+        "aliases": [
+          "Altai Territory"
+        ]
+      },
+      {
+        "name": "Kamchatka Krai",
+        "imageUrl": "/data/flags/rus/kamchatka.svg",
+        "code": "KAMCHATKA",
+        "subtext": "Krai",
+        "aliases": [
+          "Kamchatka"
+        ]
+      },
+      {
+        "name": "Khabarovsk Krai",
+        "imageUrl": "/data/flags/rus/khabarovsk.svg",
+        "code": "KHABAROVSK",
+        "subtext": "Krai",
+        "aliases": [
+          "Khabarovsk"
+        ]
+      },
+      {
+        "name": "Krasnodar Krai",
+        "imageUrl": "/data/flags/rus/krasnodar.svg",
+        "code": "KRASNODAR",
+        "subtext": "Krai",
+        "aliases": [
+          "Krasnodar",
+          "Kuban"
+        ]
+      },
+      {
+        "name": "Krasnoyarsk Krai",
+        "imageUrl": "/data/flags/rus/krasnoyarsk.svg",
+        "code": "KRASNOYARSK",
+        "subtext": "Krai",
+        "aliases": [
+          "Krasnoyarsk"
+        ]
+      },
+      {
+        "name": "Perm Krai",
+        "imageUrl": "/data/flags/rus/perm.svg",
+        "code": "PERM",
+        "subtext": "Krai",
+        "aliases": [
+          "Perm"
+        ]
+      },
+      {
+        "name": "Primorsky Krai",
+        "imageUrl": "/data/flags/rus/primorsky.svg",
+        "code": "PRIMORSKY",
+        "subtext": "Krai",
+        "aliases": [
+          "Primorsky",
+          "Primorye"
+        ]
+      },
+      {
+        "name": "Stavropol Krai",
+        "imageUrl": "/data/flags/rus/stavropol.svg",
+        "code": "STAVROPOL",
+        "subtext": "Krai",
+        "aliases": [
+          "Stavropol"
+        ]
+      },
+      {
+        "name": "Zabaykalsky Krai",
+        "imageUrl": "/data/flags/rus/zabaykalsky.svg",
+        "code": "ZABAYKALSKY",
+        "subtext": "Krai",
+        "aliases": [
+          "Zabaykalsky",
+          "Transbaikal",
+          "Transbaikalia",
+          "Chita"
+        ]
+      },
+      {
+        "name": "Amur Oblast",
+        "imageUrl": "/data/flags/rus/amur.svg",
+        "code": "AMUR",
+        "subtext": "Oblast",
+        "aliases": [
+          "Amur"
+        ]
+      },
+      {
+        "name": "Arkhangelsk Oblast",
+        "imageUrl": "/data/flags/rus/arkhangelsk.svg",
+        "code": "ARKHANGELSK",
+        "subtext": "Oblast",
+        "aliases": [
+          "Arkhangelsk"
+        ]
+      },
+      {
+        "name": "Astrakhan Oblast",
+        "imageUrl": "/data/flags/rus/astrakhan.svg",
+        "code": "ASTRAKHAN",
+        "subtext": "Oblast",
+        "aliases": [
+          "Astrakhan"
+        ]
+      },
+      {
+        "name": "Belgorod Oblast",
+        "imageUrl": "/data/flags/rus/belgorod.svg",
+        "code": "BELGOROD",
+        "subtext": "Oblast",
+        "aliases": [
+          "Belgorod"
+        ]
+      },
+      {
+        "name": "Bryansk Oblast",
+        "imageUrl": "/data/flags/rus/bryansk.svg",
+        "code": "BRYANSK",
+        "subtext": "Oblast",
+        "aliases": [
+          "Bryansk"
+        ]
+      },
+      {
+        "name": "Chelyabinsk Oblast",
+        "imageUrl": "/data/flags/rus/chelyabinsk.svg",
+        "code": "CHELYABINSK",
+        "subtext": "Oblast",
+        "aliases": [
+          "Chelyabinsk"
+        ]
+      },
+      {
+        "name": "Irkutsk Oblast",
+        "imageUrl": "/data/flags/rus/irkutsk.svg",
+        "code": "IRKUTSK",
+        "subtext": "Oblast",
+        "aliases": [
+          "Irkutsk"
+        ]
+      },
+      {
+        "name": "Ivanovo Oblast",
+        "imageUrl": "/data/flags/rus/ivanovo.svg",
+        "code": "IVANOVO",
+        "subtext": "Oblast",
+        "aliases": [
+          "Ivanovo"
+        ]
+      },
+      {
+        "name": "Kaliningrad Oblast",
+        "imageUrl": "/data/flags/rus/kaliningrad.svg",
+        "code": "KALININGRAD",
+        "subtext": "Oblast",
+        "aliases": [
+          "Kaliningrad"
+        ]
+      },
+      {
+        "name": "Kaluga Oblast",
+        "imageUrl": "/data/flags/rus/kaluga.svg",
+        "code": "KALUGA",
+        "subtext": "Oblast",
+        "aliases": [
+          "Kaluga"
+        ]
+      },
+      {
+        "name": "Kemerovo Oblast",
+        "imageUrl": "/data/flags/rus/kemerovo.svg",
+        "code": "KEMEROVO",
+        "subtext": "Oblast",
+        "aliases": [
+          "Kemerovo",
+          "Kuzbass"
+        ]
+      },
+      {
+        "name": "Kirov Oblast",
+        "imageUrl": "/data/flags/rus/kirov.svg",
+        "code": "KIROV",
+        "subtext": "Oblast",
+        "aliases": [
+          "Kirov"
+        ]
+      },
+      {
+        "name": "Kostroma Oblast",
+        "imageUrl": "/data/flags/rus/kostroma.svg",
+        "code": "KOSTROMA",
+        "subtext": "Oblast",
+        "aliases": [
+          "Kostroma"
+        ]
+      },
+      {
+        "name": "Kurgan Oblast",
+        "imageUrl": "/data/flags/rus/kurgan.svg",
+        "code": "KURGAN",
+        "subtext": "Oblast",
+        "aliases": [
+          "Kurgan"
+        ]
+      },
+      {
+        "name": "Kursk Oblast",
+        "imageUrl": "/data/flags/rus/kursk.svg",
+        "code": "KURSK",
+        "subtext": "Oblast",
+        "aliases": [
+          "Kursk"
+        ]
+      },
+      {
+        "name": "Leningrad Oblast",
+        "imageUrl": "/data/flags/rus/leningrad.svg",
+        "code": "LENINGRAD",
+        "subtext": "Oblast",
+        "aliases": [
+          "Leningrad"
+        ]
+      },
+      {
+        "name": "Lipetsk Oblast",
+        "imageUrl": "/data/flags/rus/lipetsk.svg",
+        "code": "LIPETSK",
+        "subtext": "Oblast",
+        "aliases": [
+          "Lipetsk"
+        ]
+      },
+      {
+        "name": "Magadan Oblast",
+        "imageUrl": "/data/flags/rus/magadan.svg",
+        "code": "MAGADAN",
+        "subtext": "Oblast",
+        "aliases": [
+          "Magadan"
+        ]
+      },
+      {
+        "name": "Moscow Oblast",
+        "imageUrl": "/data/flags/rus/moscow-oblast.svg",
+        "code": "MOSCOW-OBLAST",
+        "subtext": "Oblast",
+        "aliases": [
+          "Podmoskovye"
+        ]
+      },
+      {
+        "name": "Murmansk Oblast",
+        "imageUrl": "/data/flags/rus/murmansk.svg",
+        "code": "MURMANSK",
+        "subtext": "Oblast",
+        "aliases": [
+          "Murmansk"
+        ]
+      },
+      {
+        "name": "Nizhny Novgorod Oblast",
+        "imageUrl": "/data/flags/rus/nizhny-novgorod.svg",
+        "code": "NIZHNY-NOVGOROD",
+        "subtext": "Oblast",
+        "aliases": [
+          "Nizhny Novgorod"
+        ]
+      },
+      {
+        "name": "Novgorod Oblast",
+        "imageUrl": "/data/flags/rus/novgorod.svg",
+        "code": "NOVGOROD",
+        "subtext": "Oblast",
+        "aliases": [
+          "Novgorod"
+        ]
+      },
+      {
+        "name": "Novosibirsk Oblast",
+        "imageUrl": "/data/flags/rus/novosibirsk.svg",
+        "code": "NOVOSIBIRSK",
+        "subtext": "Oblast",
+        "aliases": [
+          "Novosibirsk"
+        ]
+      },
+      {
+        "name": "Omsk Oblast",
+        "imageUrl": "/data/flags/rus/omsk.svg",
+        "code": "OMSK",
+        "subtext": "Oblast",
+        "aliases": [
+          "Omsk"
+        ]
+      },
+      {
+        "name": "Orenburg Oblast",
+        "imageUrl": "/data/flags/rus/orenburg.svg",
+        "code": "ORENBURG",
+        "subtext": "Oblast",
+        "aliases": [
+          "Orenburg"
+        ]
+      },
+      {
+        "name": "Oryol Oblast",
+        "imageUrl": "/data/flags/rus/oryol.svg",
+        "code": "ORYOL",
+        "subtext": "Oblast",
+        "aliases": [
+          "Oryol",
+          "Orel"
+        ]
+      },
+      {
+        "name": "Penza Oblast",
+        "imageUrl": "/data/flags/rus/penza.svg",
+        "code": "PENZA",
+        "subtext": "Oblast",
+        "aliases": [
+          "Penza"
+        ]
+      },
+      {
+        "name": "Pskov Oblast",
+        "imageUrl": "/data/flags/rus/pskov.svg",
+        "code": "PSKOV",
+        "subtext": "Oblast",
+        "aliases": [
+          "Pskov"
+        ]
+      },
+      {
+        "name": "Rostov Oblast",
+        "imageUrl": "/data/flags/rus/rostov.svg",
+        "code": "ROSTOV",
+        "subtext": "Oblast",
+        "aliases": [
+          "Rostov"
+        ]
+      },
+      {
+        "name": "Ryazan Oblast",
+        "imageUrl": "/data/flags/rus/ryazan.svg",
+        "code": "RYAZAN",
+        "subtext": "Oblast",
+        "aliases": [
+          "Ryazan"
+        ]
+      },
+      {
+        "name": "Sakhalin Oblast",
+        "imageUrl": "/data/flags/rus/sakhalin.svg",
+        "code": "SAKHALIN",
+        "subtext": "Oblast",
+        "aliases": [
+          "Sakhalin"
+        ]
+      },
+      {
+        "name": "Samara Oblast",
+        "imageUrl": "/data/flags/rus/samara.svg",
+        "code": "SAMARA",
+        "subtext": "Oblast",
+        "aliases": [
+          "Samara"
+        ]
+      },
+      {
+        "name": "Saratov Oblast",
+        "imageUrl": "/data/flags/rus/saratov.svg",
+        "code": "SARATOV",
+        "subtext": "Oblast",
+        "aliases": [
+          "Saratov"
+        ]
+      },
+      {
+        "name": "Smolensk Oblast",
+        "imageUrl": "/data/flags/rus/smolensk.svg",
+        "code": "SMOLENSK",
+        "subtext": "Oblast",
+        "aliases": [
+          "Smolensk"
+        ]
+      },
+      {
+        "name": "Sverdlovsk Oblast",
+        "imageUrl": "/data/flags/rus/sverdlovsk.svg",
+        "code": "SVERDLOVSK",
+        "subtext": "Oblast",
+        "aliases": [
+          "Sverdlovsk"
+        ]
+      },
+      {
+        "name": "Tambov Oblast",
+        "imageUrl": "/data/flags/rus/tambov.svg",
+        "code": "TAMBOV",
+        "subtext": "Oblast",
+        "aliases": [
+          "Tambov"
+        ]
+      },
+      {
+        "name": "Tomsk Oblast",
+        "imageUrl": "/data/flags/rus/tomsk.svg",
+        "code": "TOMSK",
+        "subtext": "Oblast",
+        "aliases": [
+          "Tomsk"
+        ]
+      },
+      {
+        "name": "Tula Oblast",
+        "imageUrl": "/data/flags/rus/tula.svg",
+        "code": "TULA",
+        "subtext": "Oblast",
+        "aliases": [
+          "Tula"
+        ]
+      },
+      {
+        "name": "Tver Oblast",
+        "imageUrl": "/data/flags/rus/tver.svg",
+        "code": "TVER",
+        "subtext": "Oblast",
+        "aliases": [
+          "Tver"
+        ]
+      },
+      {
+        "name": "Tyumen Oblast",
+        "imageUrl": "/data/flags/rus/tyumen.svg",
+        "code": "TYUMEN",
+        "subtext": "Oblast",
+        "aliases": [
+          "Tyumen"
+        ]
+      },
+      {
+        "name": "Ulyanovsk Oblast",
+        "imageUrl": "/data/flags/rus/ulyanovsk.svg",
+        "code": "ULYANOVSK",
+        "subtext": "Oblast",
+        "aliases": [
+          "Ulyanovsk"
+        ]
+      },
+      {
+        "name": "Vladimir Oblast",
+        "imageUrl": "/data/flags/rus/vladimir.svg",
+        "code": "VLADIMIR",
+        "subtext": "Oblast",
+        "aliases": [
+          "Vladimir"
+        ]
+      },
+      {
+        "name": "Volgograd Oblast",
+        "imageUrl": "/data/flags/rus/volgograd.svg",
+        "code": "VOLGOGRAD",
+        "subtext": "Oblast",
+        "aliases": [
+          "Volgograd"
+        ]
+      },
+      {
+        "name": "Vologda Oblast",
+        "imageUrl": "/data/flags/rus/vologda.svg",
+        "code": "VOLOGDA",
+        "subtext": "Oblast",
+        "aliases": [
+          "Vologda"
+        ]
+      },
+      {
+        "name": "Voronezh Oblast",
+        "imageUrl": "/data/flags/rus/voronezh.svg",
+        "code": "VORONEZH",
+        "subtext": "Oblast",
+        "aliases": [
+          "Voronezh"
+        ]
+      },
+      {
+        "name": "Yaroslavl Oblast",
+        "imageUrl": "/data/flags/rus/yaroslavl.svg",
+        "code": "YAROSLAVL",
+        "subtext": "Oblast",
+        "aliases": [
+          "Yaroslavl"
+        ]
+      },
+      {
+        "name": "Moscow",
+        "imageUrl": "/data/flags/rus/moscow.svg",
+        "code": "MOSCOW",
+        "subtext": "Federal City",
+        "aliases": [
+          "Moscow City",
+          "Moskva"
+        ]
+      },
+      {
+        "name": "Saint Petersburg",
+        "imageUrl": "/data/flags/rus/saint-petersburg.svg",
+        "code": "SAINT-PETERSBURG",
+        "subtext": "Federal City",
+        "aliases": [
+          "St. Petersburg",
+          "St Petersburg",
+          "Petersburg"
+        ]
+      },
+      {
+        "name": "Sevastopol",
+        "imageUrl": "/data/flags/rus/sevastopol.svg",
+        "code": "SEVASTOPOL",
+        "subtext": "Federal City",
+        "aliases": [
+          "Sevastopol City"
+        ]
+      },
+      {
+        "name": "Jewish Autonomous Oblast",
+        "imageUrl": "/data/flags/rus/jewish-ao.svg",
+        "code": "JEWISH-AO",
+        "subtext": "Autonomous Oblast",
+        "aliases": [
+          "Jewish AO",
+          "JAO",
+          "Birobidzhan"
+        ]
+      },
+      {
+        "name": "Chukotka Autonomous Okrug",
+        "imageUrl": "/data/flags/rus/chukotka.svg",
+        "code": "CHUKOTKA",
+        "subtext": "Autonomous Okrug",
+        "aliases": [
+          "Chukotka"
+        ]
+      },
+      {
+        "name": "Khanty-Mansi Autonomous Okrug",
+        "imageUrl": "/data/flags/rus/khanty-mansi.svg",
+        "code": "KHANTY-MANSI",
+        "subtext": "Autonomous Okrug",
+        "aliases": [
+          "Khanty-Mansi",
+          "Yugra",
+          "Ugra"
+        ]
+      },
+      {
+        "name": "Nenets Autonomous Okrug",
+        "imageUrl": "/data/flags/rus/nenets.svg",
+        "code": "NENETS",
+        "subtext": "Autonomous Okrug",
+        "aliases": [
+          "Nenets",
+          "Nenetsia"
+        ]
+      },
+      {
+        "name": "Yamalo-Nenets Autonomous Okrug",
+        "imageUrl": "/data/flags/rus/yamalo-nenets.svg",
+        "code": "YAMALO-NENETS",
+        "subtext": "Autonomous Okrug",
+        "aliases": [
+          "Yamalo-Nenets",
+          "Yamal"
+        ]
+      }
+    ],
+    "totalItems": 85,
+    "tags": [
+      "RUS",
+      "1st-level-flags",
+      "flags"
+    ]
+  }
+]

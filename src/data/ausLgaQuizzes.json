@@ -1,0 +1,4080 @@
+[
+  {
+    "id": "aus-lga-nsw",
+    "title": "New South Wales: Local Government Areas (128)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/aus-lga/nsw.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Albury": [
+        "City of Albury",
+        "Albury City",
+        "Shire of Albury",
+        "Albury Shire",
+        "Albury Council"
+      ],
+      "Armidale": [
+        "City of Armidale",
+        "Armidale City",
+        "Shire of Armidale",
+        "Armidale Shire",
+        "Armidale Council",
+        "Armidale Regional"
+      ],
+      "Ballina": [
+        "City of Ballina",
+        "Ballina City",
+        "Shire of Ballina",
+        "Ballina Shire",
+        "Ballina Council"
+      ],
+      "Balranald": [
+        "City of Balranald",
+        "Balranald City",
+        "Shire of Balranald",
+        "Balranald Shire",
+        "Balranald Council"
+      ],
+      "Bathurst": [
+        "City of Bathurst",
+        "Bathurst City",
+        "Shire of Bathurst",
+        "Bathurst Shire",
+        "Bathurst Council",
+        "Bathurst Regional"
+      ],
+      "Bayside": [
+        "Bayside (NSW)",
+        "City of Bayside",
+        "Bayside City",
+        "Shire of Bayside",
+        "Bayside Shire",
+        "Bayside Council"
+      ],
+      "Bega Valley": [
+        "City of Bega Valley",
+        "Bega Valley City",
+        "Shire of Bega Valley",
+        "Bega Valley Shire",
+        "Bega Valley Council"
+      ],
+      "Bellingen": [
+        "City of Bellingen",
+        "Bellingen City",
+        "Shire of Bellingen",
+        "Bellingen Shire",
+        "Bellingen Council"
+      ],
+      "Berrigan": [
+        "City of Berrigan",
+        "Berrigan City",
+        "Shire of Berrigan",
+        "Berrigan Shire",
+        "Berrigan Council"
+      ],
+      "Blacktown": [
+        "City of Blacktown",
+        "Blacktown City",
+        "Shire of Blacktown",
+        "Blacktown Shire",
+        "Blacktown Council"
+      ],
+      "Bland": [
+        "City of Bland",
+        "Bland City",
+        "Shire of Bland",
+        "Bland Shire",
+        "Bland Council"
+      ],
+      "Blayney": [
+        "City of Blayney",
+        "Blayney City",
+        "Shire of Blayney",
+        "Blayney Shire",
+        "Blayney Council"
+      ],
+      "Blue Mountains": [
+        "City of Blue Mountains",
+        "Blue Mountains City",
+        "Shire of Blue Mountains",
+        "Blue Mountains Shire",
+        "Blue Mountains Council"
+      ],
+      "Bogan": [
+        "City of Bogan",
+        "Bogan City",
+        "Shire of Bogan",
+        "Bogan Shire",
+        "Bogan Council"
+      ],
+      "Bourke": [
+        "City of Bourke",
+        "Bourke City",
+        "Shire of Bourke",
+        "Bourke Shire",
+        "Bourke Council"
+      ],
+      "Brewarrina": [
+        "City of Brewarrina",
+        "Brewarrina City",
+        "Shire of Brewarrina",
+        "Brewarrina Shire",
+        "Brewarrina Council"
+      ],
+      "Broken Hill": [
+        "City of Broken Hill",
+        "Broken Hill City",
+        "Shire of Broken Hill",
+        "Broken Hill Shire",
+        "Broken Hill Council"
+      ],
+      "Burwood": [
+        "City of Burwood",
+        "Burwood City",
+        "Shire of Burwood",
+        "Burwood Shire",
+        "Burwood Council"
+      ],
+      "Byron": [
+        "City of Byron",
+        "Byron City",
+        "Shire of Byron",
+        "Byron Shire",
+        "Byron Council"
+      ],
+      "Cabonne": [
+        "City of Cabonne",
+        "Cabonne City",
+        "Shire of Cabonne",
+        "Cabonne Shire",
+        "Cabonne Council"
+      ],
+      "Camden": [
+        "City of Camden",
+        "Camden City",
+        "Shire of Camden",
+        "Camden Shire",
+        "Camden Council"
+      ],
+      "Campbelltown": [
+        "Campbelltown (NSW)",
+        "City of Campbelltown",
+        "Campbelltown City",
+        "Shire of Campbelltown",
+        "Campbelltown Shire",
+        "Campbelltown Council"
+      ],
+      "Canada Bay": [
+        "City of Canada Bay",
+        "Canada Bay City",
+        "Shire of Canada Bay",
+        "Canada Bay Shire",
+        "Canada Bay Council"
+      ],
+      "Canterbury-Bankstown": [
+        "Canterbury Bankstown",
+        "City of Canterbury-Bankstown",
+        "Canterbury-Bankstown City",
+        "Shire of Canterbury-Bankstown",
+        "Canterbury-Bankstown Shire",
+        "Canterbury-Bankstown Council",
+        "Bankstown",
+        "Canterbury"
+      ],
+      "Carrathool": [
+        "City of Carrathool",
+        "Carrathool City",
+        "Shire of Carrathool",
+        "Carrathool Shire",
+        "Carrathool Council"
+      ],
+      "Central Coast": [
+        "Central Coast (NSW)",
+        "City of Central Coast",
+        "Central Coast City",
+        "Shire of Central Coast",
+        "Central Coast Shire",
+        "Central Coast Council"
+      ],
+      "Central Darling": [
+        "City of Central Darling",
+        "Central Darling City",
+        "Shire of Central Darling",
+        "Central Darling Shire",
+        "Central Darling Council"
+      ],
+      "Cessnock": [
+        "City of Cessnock",
+        "Cessnock City",
+        "Shire of Cessnock",
+        "Cessnock Shire",
+        "Cessnock Council"
+      ],
+      "Clarence Valley": [
+        "City of Clarence Valley",
+        "Clarence Valley City",
+        "Shire of Clarence Valley",
+        "Clarence Valley Shire",
+        "Clarence Valley Council"
+      ],
+      "Cobar": [
+        "City of Cobar",
+        "Cobar City",
+        "Shire of Cobar",
+        "Cobar Shire",
+        "Cobar Council"
+      ],
+      "Coffs Harbour": [
+        "City of Coffs Harbour",
+        "Coffs Harbour City",
+        "Shire of Coffs Harbour",
+        "Coffs Harbour Shire",
+        "Coffs Harbour Council"
+      ],
+      "Coolamon": [
+        "City of Coolamon",
+        "Coolamon City",
+        "Shire of Coolamon",
+        "Coolamon Shire",
+        "Coolamon Council"
+      ],
+      "Coonamble": [
+        "City of Coonamble",
+        "Coonamble City",
+        "Shire of Coonamble",
+        "Coonamble Shire",
+        "Coonamble Council"
+      ],
+      "Cootamundra-Gundagai": [
+        "Cootamundra Gundagai",
+        "City of Cootamundra-Gundagai",
+        "Cootamundra-Gundagai City",
+        "Shire of Cootamundra-Gundagai",
+        "Cootamundra-Gundagai Shire",
+        "Cootamundra-Gundagai Council",
+        "Cootamundra",
+        "Gundagai"
+      ],
+      "Cowra": [
+        "City of Cowra",
+        "Cowra City",
+        "Shire of Cowra",
+        "Cowra Shire",
+        "Cowra Council"
+      ],
+      "Cumberland": [
+        "City of Cumberland",
+        "Cumberland City",
+        "Shire of Cumberland",
+        "Cumberland Shire",
+        "Cumberland Council"
+      ],
+      "Dubbo": [
+        "City of Dubbo",
+        "Dubbo City",
+        "Shire of Dubbo",
+        "Dubbo Shire",
+        "Dubbo Council",
+        "Dubbo Regional"
+      ],
+      "Dungog": [
+        "City of Dungog",
+        "Dungog City",
+        "Shire of Dungog",
+        "Dungog Shire",
+        "Dungog Council"
+      ],
+      "Edward River": [
+        "City of Edward River",
+        "Edward River City",
+        "Shire of Edward River",
+        "Edward River Shire",
+        "Edward River Council"
+      ],
+      "Eurobodalla": [
+        "City of Eurobodalla",
+        "Eurobodalla City",
+        "Shire of Eurobodalla",
+        "Eurobodalla Shire",
+        "Eurobodalla Council"
+      ],
+      "Fairfield": [
+        "City of Fairfield",
+        "Fairfield City",
+        "Shire of Fairfield",
+        "Fairfield Shire",
+        "Fairfield Council"
+      ],
+      "Federation": [
+        "City of Federation",
+        "Federation City",
+        "Shire of Federation",
+        "Federation Shire",
+        "Federation Council"
+      ],
+      "Forbes": [
+        "City of Forbes",
+        "Forbes City",
+        "Shire of Forbes",
+        "Forbes Shire",
+        "Forbes Council"
+      ],
+      "Georges River": [
+        "City of Georges River",
+        "Georges River City",
+        "Shire of Georges River",
+        "Georges River Shire",
+        "Georges River Council"
+      ],
+      "Gilgandra": [
+        "City of Gilgandra",
+        "Gilgandra City",
+        "Shire of Gilgandra",
+        "Gilgandra Shire",
+        "Gilgandra Council"
+      ],
+      "Glen Innes Severn": [
+        "City of Glen Innes Severn",
+        "Glen Innes Severn City",
+        "Shire of Glen Innes Severn",
+        "Glen Innes Severn Shire",
+        "Glen Innes Severn Council",
+        "Glen Innes"
+      ],
+      "Goulburn Mulwaree": [
+        "City of Goulburn Mulwaree",
+        "Goulburn Mulwaree City",
+        "Shire of Goulburn Mulwaree",
+        "Goulburn Mulwaree Shire",
+        "Goulburn Mulwaree Council",
+        "Goulburn"
+      ],
+      "Greater Hume": [
+        "City of Greater Hume",
+        "Greater Hume City",
+        "Shire of Greater Hume",
+        "Greater Hume Shire",
+        "Greater Hume Council"
+      ],
+      "Griffith": [
+        "City of Griffith",
+        "Griffith City",
+        "Shire of Griffith",
+        "Griffith Shire",
+        "Griffith Council"
+      ],
+      "Gunnedah": [
+        "City of Gunnedah",
+        "Gunnedah City",
+        "Shire of Gunnedah",
+        "Gunnedah Shire",
+        "Gunnedah Council"
+      ],
+      "Gwydir": [
+        "City of Gwydir",
+        "Gwydir City",
+        "Shire of Gwydir",
+        "Gwydir Shire",
+        "Gwydir Council"
+      ],
+      "Hawkesbury": [
+        "City of Hawkesbury",
+        "Hawkesbury City",
+        "Shire of Hawkesbury",
+        "Hawkesbury Shire",
+        "Hawkesbury Council"
+      ],
+      "Hay": [
+        "City of Hay",
+        "Hay City",
+        "Shire of Hay",
+        "Hay Shire",
+        "Hay Council"
+      ],
+      "Hilltops": [
+        "City of Hilltops",
+        "Hilltops City",
+        "Shire of Hilltops",
+        "Hilltops Shire",
+        "Hilltops Council"
+      ],
+      "Hornsby": [
+        "City of Hornsby",
+        "Hornsby City",
+        "Shire of Hornsby",
+        "Hornsby Shire",
+        "Hornsby Council"
+      ],
+      "Hunters Hill": [
+        "City of Hunters Hill",
+        "Hunters Hill City",
+        "Shire of Hunters Hill",
+        "Hunters Hill Shire",
+        "Hunters Hill Council"
+      ],
+      "Inner West": [
+        "City of Inner West",
+        "Inner West City",
+        "Shire of Inner West",
+        "Inner West Shire",
+        "Inner West Council"
+      ],
+      "Inverell": [
+        "City of Inverell",
+        "Inverell City",
+        "Shire of Inverell",
+        "Inverell Shire",
+        "Inverell Council"
+      ],
+      "Junee": [
+        "City of Junee",
+        "Junee City",
+        "Shire of Junee",
+        "Junee Shire",
+        "Junee Council"
+      ],
+      "Kempsey": [
+        "City of Kempsey",
+        "Kempsey City",
+        "Shire of Kempsey",
+        "Kempsey Shire",
+        "Kempsey Council"
+      ],
+      "Kiama": [
+        "City of Kiama",
+        "Kiama City",
+        "Shire of Kiama",
+        "Kiama Shire",
+        "Kiama Council"
+      ],
+      "Ku-ring-gai": [
+        "Ku ring gai",
+        "City of Ku-ring-gai",
+        "Ku-ring-gai City",
+        "Shire of Ku-ring-gai",
+        "Ku-ring-gai Shire",
+        "Ku-ring-gai Council",
+        "Kuringgai"
+      ],
+      "Kyogle": [
+        "City of Kyogle",
+        "Kyogle City",
+        "Shire of Kyogle",
+        "Kyogle Shire",
+        "Kyogle Council"
+      ],
+      "Lachlan": [
+        "City of Lachlan",
+        "Lachlan City",
+        "Shire of Lachlan",
+        "Lachlan Shire",
+        "Lachlan Council"
+      ],
+      "Lake Macquarie": [
+        "City of Lake Macquarie",
+        "Lake Macquarie City",
+        "Shire of Lake Macquarie",
+        "Lake Macquarie Shire",
+        "Lake Macquarie Council"
+      ],
+      "Lane Cove": [
+        "City of Lane Cove",
+        "Lane Cove City",
+        "Shire of Lane Cove",
+        "Lane Cove Shire",
+        "Lane Cove Council"
+      ],
+      "Leeton": [
+        "City of Leeton",
+        "Leeton City",
+        "Shire of Leeton",
+        "Leeton Shire",
+        "Leeton Council"
+      ],
+      "Lismore": [
+        "City of Lismore",
+        "Lismore City",
+        "Shire of Lismore",
+        "Lismore Shire",
+        "Lismore Council"
+      ],
+      "Lithgow": [
+        "City of Lithgow",
+        "Lithgow City",
+        "Shire of Lithgow",
+        "Lithgow Shire",
+        "Lithgow Council"
+      ],
+      "Liverpool": [
+        "City of Liverpool",
+        "Liverpool City",
+        "Shire of Liverpool",
+        "Liverpool Shire",
+        "Liverpool Council"
+      ],
+      "Liverpool Plains": [
+        "City of Liverpool Plains",
+        "Liverpool Plains City",
+        "Shire of Liverpool Plains",
+        "Liverpool Plains Shire",
+        "Liverpool Plains Council"
+      ],
+      "Lockhart": [
+        "City of Lockhart",
+        "Lockhart City",
+        "Shire of Lockhart",
+        "Lockhart Shire",
+        "Lockhart Council"
+      ],
+      "Maitland": [
+        "City of Maitland",
+        "Maitland City",
+        "Shire of Maitland",
+        "Maitland Shire",
+        "Maitland Council"
+      ],
+      "Mid-Coast": [
+        "Mid Coast",
+        "City of Mid-Coast",
+        "Mid-Coast City",
+        "Shire of Mid-Coast",
+        "Mid-Coast Shire",
+        "Mid-Coast Council",
+        "MidCoast"
+      ],
+      "Mid-Western": [
+        "Mid Western",
+        "City of Mid-Western",
+        "Mid-Western City",
+        "Shire of Mid-Western",
+        "Mid-Western Shire",
+        "Mid-Western Council",
+        "Mid-Western Regional",
+        "Mudgee"
+      ],
+      "Moree Plains": [
+        "City of Moree Plains",
+        "Moree Plains City",
+        "Shire of Moree Plains",
+        "Moree Plains Shire",
+        "Moree Plains Council"
+      ],
+      "Mosman": [
+        "City of Mosman",
+        "Mosman City",
+        "Shire of Mosman",
+        "Mosman Shire",
+        "Mosman Council"
+      ],
+      "Murray River": [
+        "City of Murray River",
+        "Murray River City",
+        "Shire of Murray River",
+        "Murray River Shire",
+        "Murray River Council"
+      ],
+      "Murrumbidgee": [
+        "City of Murrumbidgee",
+        "Murrumbidgee City",
+        "Shire of Murrumbidgee",
+        "Murrumbidgee Shire",
+        "Murrumbidgee Council"
+      ],
+      "Muswellbrook": [
+        "City of Muswellbrook",
+        "Muswellbrook City",
+        "Shire of Muswellbrook",
+        "Muswellbrook Shire",
+        "Muswellbrook Council"
+      ],
+      "Nambucca Valley": [
+        "City of Nambucca Valley",
+        "Nambucca Valley City",
+        "Shire of Nambucca Valley",
+        "Nambucca Valley Shire",
+        "Nambucca Valley Council"
+      ],
+      "Narrabri": [
+        "City of Narrabri",
+        "Narrabri City",
+        "Shire of Narrabri",
+        "Narrabri Shire",
+        "Narrabri Council"
+      ],
+      "Narrandera": [
+        "City of Narrandera",
+        "Narrandera City",
+        "Shire of Narrandera",
+        "Narrandera Shire",
+        "Narrandera Council"
+      ],
+      "Narromine": [
+        "City of Narromine",
+        "Narromine City",
+        "Shire of Narromine",
+        "Narromine Shire",
+        "Narromine Council"
+      ],
+      "Newcastle": [
+        "City of Newcastle",
+        "Newcastle City",
+        "Shire of Newcastle",
+        "Newcastle Shire",
+        "Newcastle Council"
+      ],
+      "North Sydney": [
+        "City of North Sydney",
+        "North Sydney City",
+        "Shire of North Sydney",
+        "North Sydney Shire",
+        "North Sydney Council"
+      ],
+      "Northern Beaches": [
+        "City of Northern Beaches",
+        "Northern Beaches City",
+        "Shire of Northern Beaches",
+        "Northern Beaches Shire",
+        "Northern Beaches Council"
+      ],
+      "Oberon": [
+        "City of Oberon",
+        "Oberon City",
+        "Shire of Oberon",
+        "Oberon Shire",
+        "Oberon Council"
+      ],
+      "Orange": [
+        "City of Orange",
+        "Orange City",
+        "Shire of Orange",
+        "Orange Shire",
+        "Orange Council"
+      ],
+      "Parkes": [
+        "City of Parkes",
+        "Parkes City",
+        "Shire of Parkes",
+        "Parkes Shire",
+        "Parkes Council"
+      ],
+      "Parramatta": [
+        "City of Parramatta",
+        "Parramatta City",
+        "Shire of Parramatta",
+        "Parramatta Shire",
+        "Parramatta Council"
+      ],
+      "Penrith": [
+        "City of Penrith",
+        "Penrith City",
+        "Shire of Penrith",
+        "Penrith Shire",
+        "Penrith Council"
+      ],
+      "Port Macquarie-Hastings": [
+        "Port Macquarie Hastings",
+        "City of Port Macquarie-Hastings",
+        "Port Macquarie-Hastings City",
+        "Shire of Port Macquarie-Hastings",
+        "Port Macquarie-Hastings Shire",
+        "Port Macquarie-Hastings Council",
+        "Port Macquarie",
+        "Hastings"
+      ],
+      "Port Stephens": [
+        "City of Port Stephens",
+        "Port Stephens City",
+        "Shire of Port Stephens",
+        "Port Stephens Shire",
+        "Port Stephens Council"
+      ],
+      "Queanbeyan-Palerang": [
+        "Queanbeyan Palerang",
+        "City of Queanbeyan-Palerang",
+        "Queanbeyan-Palerang City",
+        "Shire of Queanbeyan-Palerang",
+        "Queanbeyan-Palerang Shire",
+        "Queanbeyan-Palerang Council",
+        "Queanbeyan"
+      ],
+      "Randwick": [
+        "City of Randwick",
+        "Randwick City",
+        "Shire of Randwick",
+        "Randwick Shire",
+        "Randwick Council"
+      ],
+      "Richmond Valley": [
+        "City of Richmond Valley",
+        "Richmond Valley City",
+        "Shire of Richmond Valley",
+        "Richmond Valley Shire",
+        "Richmond Valley Council"
+      ],
+      "Ryde": [
+        "City of Ryde",
+        "Ryde City",
+        "Shire of Ryde",
+        "Ryde Shire",
+        "Ryde Council"
+      ],
+      "Shellharbour": [
+        "City of Shellharbour",
+        "Shellharbour City",
+        "Shire of Shellharbour",
+        "Shellharbour Shire",
+        "Shellharbour Council"
+      ],
+      "Shoalhaven": [
+        "City of Shoalhaven",
+        "Shoalhaven City",
+        "Shire of Shoalhaven",
+        "Shoalhaven Shire",
+        "Shoalhaven Council"
+      ],
+      "Singleton": [
+        "City of Singleton",
+        "Singleton City",
+        "Shire of Singleton",
+        "Singleton Shire",
+        "Singleton Council"
+      ],
+      "Snowy Monaro": [
+        "City of Snowy Monaro",
+        "Snowy Monaro City",
+        "Shire of Snowy Monaro",
+        "Snowy Monaro Shire",
+        "Snowy Monaro Council",
+        "Snowy Monaro Regional",
+        "Cooma"
+      ],
+      "Snowy Valleys": [
+        "City of Snowy Valleys",
+        "Snowy Valleys City",
+        "Shire of Snowy Valleys",
+        "Snowy Valleys Shire",
+        "Snowy Valleys Council"
+      ],
+      "Strathfield": [
+        "City of Strathfield",
+        "Strathfield City",
+        "Shire of Strathfield",
+        "Strathfield Shire",
+        "Strathfield Council"
+      ],
+      "Sutherland": [
+        "City of Sutherland",
+        "Sutherland City",
+        "Shire of Sutherland",
+        "Sutherland Shire",
+        "Sutherland Council",
+        "The Shire"
+      ],
+      "Sydney": [
+        "City of Sydney",
+        "Sydney City",
+        "Shire of Sydney",
+        "Sydney Shire",
+        "Sydney Council"
+      ],
+      "Tamworth": [
+        "City of Tamworth",
+        "Tamworth City",
+        "Shire of Tamworth",
+        "Tamworth Shire",
+        "Tamworth Council",
+        "Tamworth Regional"
+      ],
+      "Temora": [
+        "City of Temora",
+        "Temora City",
+        "Shire of Temora",
+        "Temora Shire",
+        "Temora Council"
+      ],
+      "Tenterfield": [
+        "City of Tenterfield",
+        "Tenterfield City",
+        "Shire of Tenterfield",
+        "Tenterfield Shire",
+        "Tenterfield Council"
+      ],
+      "The Hills": [
+        "City of The Hills",
+        "The Hills City",
+        "Shire of The Hills",
+        "The Hills Shire",
+        "The Hills Council",
+        "Hills",
+        "Hills Shire"
+      ],
+      "Tweed": [
+        "City of Tweed",
+        "Tweed City",
+        "Shire of Tweed",
+        "Tweed Shire",
+        "Tweed Council"
+      ],
+      "Upper Hunter": [
+        "City of Upper Hunter",
+        "Upper Hunter City",
+        "Shire of Upper Hunter",
+        "Upper Hunter Shire",
+        "Upper Hunter Council"
+      ],
+      "Upper Lachlan": [
+        "City of Upper Lachlan",
+        "Upper Lachlan City",
+        "Shire of Upper Lachlan",
+        "Upper Lachlan Shire",
+        "Upper Lachlan Council"
+      ],
+      "Uralla": [
+        "City of Uralla",
+        "Uralla City",
+        "Shire of Uralla",
+        "Uralla Shire",
+        "Uralla Council"
+      ],
+      "Wagga Wagga": [
+        "City of Wagga Wagga",
+        "Wagga Wagga City",
+        "Shire of Wagga Wagga",
+        "Wagga Wagga Shire",
+        "Wagga Wagga Council",
+        "Wagga"
+      ],
+      "Walcha": [
+        "City of Walcha",
+        "Walcha City",
+        "Shire of Walcha",
+        "Walcha Shire",
+        "Walcha Council"
+      ],
+      "Walgett": [
+        "City of Walgett",
+        "Walgett City",
+        "Shire of Walgett",
+        "Walgett Shire",
+        "Walgett Council"
+      ],
+      "Warren": [
+        "City of Warren",
+        "Warren City",
+        "Shire of Warren",
+        "Warren Shire",
+        "Warren Council"
+      ],
+      "Warrumbungle": [
+        "City of Warrumbungle",
+        "Warrumbungle City",
+        "Shire of Warrumbungle",
+        "Warrumbungle Shire",
+        "Warrumbungle Council"
+      ],
+      "Waverley": [
+        "City of Waverley",
+        "Waverley City",
+        "Shire of Waverley",
+        "Waverley Shire",
+        "Waverley Council"
+      ],
+      "Weddin": [
+        "City of Weddin",
+        "Weddin City",
+        "Shire of Weddin",
+        "Weddin Shire",
+        "Weddin Council"
+      ],
+      "Wentworth": [
+        "City of Wentworth",
+        "Wentworth City",
+        "Shire of Wentworth",
+        "Wentworth Shire",
+        "Wentworth Council"
+      ],
+      "Willoughby": [
+        "City of Willoughby",
+        "Willoughby City",
+        "Shire of Willoughby",
+        "Willoughby Shire",
+        "Willoughby Council"
+      ],
+      "Wingecarribee": [
+        "City of Wingecarribee",
+        "Wingecarribee City",
+        "Shire of Wingecarribee",
+        "Wingecarribee Shire",
+        "Wingecarribee Council"
+      ],
+      "Wollondilly": [
+        "City of Wollondilly",
+        "Wollondilly City",
+        "Shire of Wollondilly",
+        "Wollondilly Shire",
+        "Wollondilly Council"
+      ],
+      "Wollongong": [
+        "City of Wollongong",
+        "Wollongong City",
+        "Shire of Wollongong",
+        "Wollongong Shire",
+        "Wollongong Council"
+      ],
+      "Woollahra": [
+        "City of Woollahra",
+        "Woollahra City",
+        "Shire of Woollahra",
+        "Woollahra Shire",
+        "Woollahra Council"
+      ],
+      "Yass Valley": [
+        "City of Yass Valley",
+        "Yass Valley City",
+        "Shire of Yass Valley",
+        "Yass Valley Shire",
+        "Yass Valley Council"
+      ]
+    },
+    "defaultCenter": [
+      -32.5,
+      147
+    ],
+    "defaultZoom": 6,
+    "totalItems": 128,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "2nd-level-divisions",
+      "aus-lga"
+    ]
+  },
+  {
+    "id": "aus-lga-vic",
+    "title": "Victoria: Local Government Areas (79)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/aus-lga/vic.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Alpine": [
+        "City of Alpine",
+        "Alpine City",
+        "Shire of Alpine",
+        "Alpine Shire",
+        "Alpine Council"
+      ],
+      "Ararat": [
+        "City of Ararat",
+        "Ararat City",
+        "Shire of Ararat",
+        "Ararat Shire",
+        "Ararat Council"
+      ],
+      "Ballarat": [
+        "City of Ballarat",
+        "Ballarat City",
+        "Shire of Ballarat",
+        "Ballarat Shire",
+        "Ballarat Council"
+      ],
+      "Banyule": [
+        "City of Banyule",
+        "Banyule City",
+        "Shire of Banyule",
+        "Banyule Shire",
+        "Banyule Council"
+      ],
+      "Bass Coast": [
+        "City of Bass Coast",
+        "Bass Coast City",
+        "Shire of Bass Coast",
+        "Bass Coast Shire",
+        "Bass Coast Council"
+      ],
+      "Baw Baw": [
+        "City of Baw Baw",
+        "Baw Baw City",
+        "Shire of Baw Baw",
+        "Baw Baw Shire",
+        "Baw Baw Council"
+      ],
+      "Bayside": [
+        "Bayside (Vic.)",
+        "Bayside (Vic)",
+        "City of Bayside",
+        "Bayside City",
+        "Shire of Bayside",
+        "Bayside Shire",
+        "Bayside Council"
+      ],
+      "Benalla": [
+        "City of Benalla",
+        "Benalla City",
+        "Shire of Benalla",
+        "Benalla Shire",
+        "Benalla Council"
+      ],
+      "Boroondara": [
+        "City of Boroondara",
+        "Boroondara City",
+        "Shire of Boroondara",
+        "Boroondara Shire",
+        "Boroondara Council"
+      ],
+      "Brimbank": [
+        "City of Brimbank",
+        "Brimbank City",
+        "Shire of Brimbank",
+        "Brimbank Shire",
+        "Brimbank Council"
+      ],
+      "Buloke": [
+        "City of Buloke",
+        "Buloke City",
+        "Shire of Buloke",
+        "Buloke Shire",
+        "Buloke Council"
+      ],
+      "Campaspe": [
+        "City of Campaspe",
+        "Campaspe City",
+        "Shire of Campaspe",
+        "Campaspe Shire",
+        "Campaspe Council"
+      ],
+      "Cardinia": [
+        "City of Cardinia",
+        "Cardinia City",
+        "Shire of Cardinia",
+        "Cardinia Shire",
+        "Cardinia Council"
+      ],
+      "Casey": [
+        "City of Casey",
+        "Casey City",
+        "Shire of Casey",
+        "Casey Shire",
+        "Casey Council"
+      ],
+      "Central Goldfields": [
+        "City of Central Goldfields",
+        "Central Goldfields City",
+        "Shire of Central Goldfields",
+        "Central Goldfields Shire",
+        "Central Goldfields Council"
+      ],
+      "Colac Otway": [
+        "City of Colac Otway",
+        "Colac Otway City",
+        "Shire of Colac Otway",
+        "Colac Otway Shire",
+        "Colac Otway Council",
+        "Colac-Otway",
+        "Colac"
+      ],
+      "Corangamite": [
+        "City of Corangamite",
+        "Corangamite City",
+        "Shire of Corangamite",
+        "Corangamite Shire",
+        "Corangamite Council"
+      ],
+      "Darebin": [
+        "City of Darebin",
+        "Darebin City",
+        "Shire of Darebin",
+        "Darebin Shire",
+        "Darebin Council"
+      ],
+      "East Gippsland": [
+        "City of East Gippsland",
+        "East Gippsland City",
+        "Shire of East Gippsland",
+        "East Gippsland Shire",
+        "East Gippsland Council"
+      ],
+      "Frankston": [
+        "City of Frankston",
+        "Frankston City",
+        "Shire of Frankston",
+        "Frankston Shire",
+        "Frankston Council"
+      ],
+      "Gannawarra": [
+        "City of Gannawarra",
+        "Gannawarra City",
+        "Shire of Gannawarra",
+        "Gannawarra Shire",
+        "Gannawarra Council"
+      ],
+      "Glen Eira": [
+        "City of Glen Eira",
+        "Glen Eira City",
+        "Shire of Glen Eira",
+        "Glen Eira Shire",
+        "Glen Eira Council"
+      ],
+      "Glenelg": [
+        "City of Glenelg",
+        "Glenelg City",
+        "Shire of Glenelg",
+        "Glenelg Shire",
+        "Glenelg Council"
+      ],
+      "Golden Plains": [
+        "City of Golden Plains",
+        "Golden Plains City",
+        "Shire of Golden Plains",
+        "Golden Plains Shire",
+        "Golden Plains Council"
+      ],
+      "Greater Bendigo": [
+        "City of Greater Bendigo",
+        "Greater Bendigo City",
+        "Shire of Greater Bendigo",
+        "Greater Bendigo Shire",
+        "Greater Bendigo Council",
+        "Bendigo"
+      ],
+      "Greater Dandenong": [
+        "City of Greater Dandenong",
+        "Greater Dandenong City",
+        "Shire of Greater Dandenong",
+        "Greater Dandenong Shire",
+        "Greater Dandenong Council",
+        "Dandenong"
+      ],
+      "Greater Geelong": [
+        "City of Greater Geelong",
+        "Greater Geelong City",
+        "Shire of Greater Geelong",
+        "Greater Geelong Shire",
+        "Greater Geelong Council",
+        "Geelong"
+      ],
+      "Greater Shepparton": [
+        "City of Greater Shepparton",
+        "Greater Shepparton City",
+        "Shire of Greater Shepparton",
+        "Greater Shepparton Shire",
+        "Greater Shepparton Council",
+        "Shepparton"
+      ],
+      "Hepburn": [
+        "City of Hepburn",
+        "Hepburn City",
+        "Shire of Hepburn",
+        "Hepburn Shire",
+        "Hepburn Council"
+      ],
+      "Hindmarsh": [
+        "City of Hindmarsh",
+        "Hindmarsh City",
+        "Shire of Hindmarsh",
+        "Hindmarsh Shire",
+        "Hindmarsh Council"
+      ],
+      "Hobsons Bay": [
+        "City of Hobsons Bay",
+        "Hobsons Bay City",
+        "Shire of Hobsons Bay",
+        "Hobsons Bay Shire",
+        "Hobsons Bay Council"
+      ],
+      "Horsham": [
+        "City of Horsham",
+        "Horsham City",
+        "Shire of Horsham",
+        "Horsham Shire",
+        "Horsham Council"
+      ],
+      "Hume": [
+        "City of Hume",
+        "Hume City",
+        "Shire of Hume",
+        "Hume Shire",
+        "Hume Council"
+      ],
+      "Indigo": [
+        "City of Indigo",
+        "Indigo City",
+        "Shire of Indigo",
+        "Indigo Shire",
+        "Indigo Council"
+      ],
+      "Kingston": [
+        "Kingston (Vic.)",
+        "Kingston (Vic)",
+        "City of Kingston",
+        "Kingston City",
+        "Shire of Kingston",
+        "Kingston Shire",
+        "Kingston Council"
+      ],
+      "Knox": [
+        "City of Knox",
+        "Knox City",
+        "Shire of Knox",
+        "Knox Shire",
+        "Knox Council"
+      ],
+      "Latrobe": [
+        "Latrobe (Vic.)",
+        "Latrobe (Vic)",
+        "City of Latrobe",
+        "Latrobe City",
+        "Shire of Latrobe",
+        "Latrobe Shire",
+        "Latrobe Council"
+      ],
+      "Loddon": [
+        "City of Loddon",
+        "Loddon City",
+        "Shire of Loddon",
+        "Loddon Shire",
+        "Loddon Council"
+      ],
+      "Macedon Ranges": [
+        "City of Macedon Ranges",
+        "Macedon Ranges City",
+        "Shire of Macedon Ranges",
+        "Macedon Ranges Shire",
+        "Macedon Ranges Council"
+      ],
+      "Manningham": [
+        "City of Manningham",
+        "Manningham City",
+        "Shire of Manningham",
+        "Manningham Shire",
+        "Manningham Council"
+      ],
+      "Mansfield": [
+        "City of Mansfield",
+        "Mansfield City",
+        "Shire of Mansfield",
+        "Mansfield Shire",
+        "Mansfield Council"
+      ],
+      "Maribyrnong": [
+        "City of Maribyrnong",
+        "Maribyrnong City",
+        "Shire of Maribyrnong",
+        "Maribyrnong Shire",
+        "Maribyrnong Council"
+      ],
+      "Maroondah": [
+        "City of Maroondah",
+        "Maroondah City",
+        "Shire of Maroondah",
+        "Maroondah Shire",
+        "Maroondah Council"
+      ],
+      "Melbourne": [
+        "City of Melbourne",
+        "Melbourne City",
+        "Shire of Melbourne",
+        "Melbourne Shire",
+        "Melbourne Council"
+      ],
+      "Melton": [
+        "City of Melton",
+        "Melton City",
+        "Shire of Melton",
+        "Melton Shire",
+        "Melton Council"
+      ],
+      "Merri-bek": [
+        "Merri bek",
+        "City of Merri-bek",
+        "Merri-bek City",
+        "Shire of Merri-bek",
+        "Merri-bek Shire",
+        "Merri-bek Council",
+        "Merribek",
+        "Moreland"
+      ],
+      "Mildura": [
+        "City of Mildura",
+        "Mildura City",
+        "Shire of Mildura",
+        "Mildura Shire",
+        "Mildura Council"
+      ],
+      "Mitchell": [
+        "City of Mitchell",
+        "Mitchell City",
+        "Shire of Mitchell",
+        "Mitchell Shire",
+        "Mitchell Council"
+      ],
+      "Moira": [
+        "City of Moira",
+        "Moira City",
+        "Shire of Moira",
+        "Moira Shire",
+        "Moira Council"
+      ],
+      "Monash": [
+        "City of Monash",
+        "Monash City",
+        "Shire of Monash",
+        "Monash Shire",
+        "Monash Council"
+      ],
+      "Moonee Valley": [
+        "City of Moonee Valley",
+        "Moonee Valley City",
+        "Shire of Moonee Valley",
+        "Moonee Valley Shire",
+        "Moonee Valley Council"
+      ],
+      "Moorabool": [
+        "City of Moorabool",
+        "Moorabool City",
+        "Shire of Moorabool",
+        "Moorabool Shire",
+        "Moorabool Council"
+      ],
+      "Mornington Peninsula": [
+        "City of Mornington Peninsula",
+        "Mornington Peninsula City",
+        "Shire of Mornington Peninsula",
+        "Mornington Peninsula Shire",
+        "Mornington Peninsula Council",
+        "Mornington"
+      ],
+      "Mount Alexander": [
+        "City of Mount Alexander",
+        "Mount Alexander City",
+        "Shire of Mount Alexander",
+        "Mount Alexander Shire",
+        "Mount Alexander Council"
+      ],
+      "Moyne": [
+        "City of Moyne",
+        "Moyne City",
+        "Shire of Moyne",
+        "Moyne Shire",
+        "Moyne Council"
+      ],
+      "Murrindindi": [
+        "City of Murrindindi",
+        "Murrindindi City",
+        "Shire of Murrindindi",
+        "Murrindindi Shire",
+        "Murrindindi Council"
+      ],
+      "Nillumbik": [
+        "City of Nillumbik",
+        "Nillumbik City",
+        "Shire of Nillumbik",
+        "Nillumbik Shire",
+        "Nillumbik Council"
+      ],
+      "Northern Grampians": [
+        "City of Northern Grampians",
+        "Northern Grampians City",
+        "Shire of Northern Grampians",
+        "Northern Grampians Shire",
+        "Northern Grampians Council"
+      ],
+      "Port Phillip": [
+        "City of Port Phillip",
+        "Port Phillip City",
+        "Shire of Port Phillip",
+        "Port Phillip Shire",
+        "Port Phillip Council"
+      ],
+      "Pyrenees": [
+        "City of Pyrenees",
+        "Pyrenees City",
+        "Shire of Pyrenees",
+        "Pyrenees Shire",
+        "Pyrenees Council"
+      ],
+      "Queenscliffe": [
+        "City of Queenscliffe",
+        "Queenscliffe City",
+        "Shire of Queenscliffe",
+        "Queenscliffe Shire",
+        "Queenscliffe Council"
+      ],
+      "South Gippsland": [
+        "City of South Gippsland",
+        "South Gippsland City",
+        "Shire of South Gippsland",
+        "South Gippsland Shire",
+        "South Gippsland Council"
+      ],
+      "Southern Grampians": [
+        "City of Southern Grampians",
+        "Southern Grampians City",
+        "Shire of Southern Grampians",
+        "Southern Grampians Shire",
+        "Southern Grampians Council"
+      ],
+      "Stonnington": [
+        "City of Stonnington",
+        "Stonnington City",
+        "Shire of Stonnington",
+        "Stonnington Shire",
+        "Stonnington Council"
+      ],
+      "Strathbogie": [
+        "City of Strathbogie",
+        "Strathbogie City",
+        "Shire of Strathbogie",
+        "Strathbogie Shire",
+        "Strathbogie Council"
+      ],
+      "Surf Coast": [
+        "City of Surf Coast",
+        "Surf Coast City",
+        "Shire of Surf Coast",
+        "Surf Coast Shire",
+        "Surf Coast Council"
+      ],
+      "Swan Hill": [
+        "City of Swan Hill",
+        "Swan Hill City",
+        "Shire of Swan Hill",
+        "Swan Hill Shire",
+        "Swan Hill Council"
+      ],
+      "Towong": [
+        "City of Towong",
+        "Towong City",
+        "Shire of Towong",
+        "Towong Shire",
+        "Towong Council"
+      ],
+      "Wangaratta": [
+        "City of Wangaratta",
+        "Wangaratta City",
+        "Shire of Wangaratta",
+        "Wangaratta Shire",
+        "Wangaratta Council"
+      ],
+      "Warrnambool": [
+        "City of Warrnambool",
+        "Warrnambool City",
+        "Shire of Warrnambool",
+        "Warrnambool Shire",
+        "Warrnambool Council"
+      ],
+      "Wellington": [
+        "City of Wellington",
+        "Wellington City",
+        "Shire of Wellington",
+        "Wellington Shire",
+        "Wellington Council"
+      ],
+      "West Wimmera": [
+        "City of West Wimmera",
+        "West Wimmera City",
+        "Shire of West Wimmera",
+        "West Wimmera Shire",
+        "West Wimmera Council"
+      ],
+      "Whitehorse": [
+        "City of Whitehorse",
+        "Whitehorse City",
+        "Shire of Whitehorse",
+        "Whitehorse Shire",
+        "Whitehorse Council"
+      ],
+      "Whittlesea": [
+        "City of Whittlesea",
+        "Whittlesea City",
+        "Shire of Whittlesea",
+        "Whittlesea Shire",
+        "Whittlesea Council"
+      ],
+      "Wodonga": [
+        "City of Wodonga",
+        "Wodonga City",
+        "Shire of Wodonga",
+        "Wodonga Shire",
+        "Wodonga Council"
+      ],
+      "Wyndham": [
+        "City of Wyndham",
+        "Wyndham City",
+        "Shire of Wyndham",
+        "Wyndham Shire",
+        "Wyndham Council"
+      ],
+      "Yarra": [
+        "City of Yarra",
+        "Yarra City",
+        "Shire of Yarra",
+        "Yarra Shire",
+        "Yarra Council"
+      ],
+      "Yarra Ranges": [
+        "City of Yarra Ranges",
+        "Yarra Ranges City",
+        "Shire of Yarra Ranges",
+        "Yarra Ranges Shire",
+        "Yarra Ranges Council"
+      ],
+      "Yarriambiack": [
+        "City of Yarriambiack",
+        "Yarriambiack City",
+        "Shire of Yarriambiack",
+        "Yarriambiack Shire",
+        "Yarriambiack Council"
+      ]
+    },
+    "defaultCenter": [
+      -37,
+      144.5
+    ],
+    "defaultZoom": 6,
+    "totalItems": 79,
+    "tags": [
+      "AUS",
+      "AU-VIC",
+      "2nd-level-divisions",
+      "aus-lga"
+    ]
+  },
+  {
+    "id": "aus-lga-qld",
+    "title": "Queensland: Local Government Areas (78)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/aus-lga/qld.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Aurukun": [
+        "City of Aurukun",
+        "Aurukun City",
+        "Shire of Aurukun",
+        "Aurukun Shire",
+        "Aurukun Council"
+      ],
+      "Balonne": [
+        "City of Balonne",
+        "Balonne City",
+        "Shire of Balonne",
+        "Balonne Shire",
+        "Balonne Council"
+      ],
+      "Banana": [
+        "City of Banana",
+        "Banana City",
+        "Shire of Banana",
+        "Banana Shire",
+        "Banana Council"
+      ],
+      "Barcaldine": [
+        "City of Barcaldine",
+        "Barcaldine City",
+        "Shire of Barcaldine",
+        "Barcaldine Shire",
+        "Barcaldine Council"
+      ],
+      "Barcoo": [
+        "City of Barcoo",
+        "Barcoo City",
+        "Shire of Barcoo",
+        "Barcoo Shire",
+        "Barcoo Council"
+      ],
+      "Blackall Tambo": [
+        "City of Blackall Tambo",
+        "Blackall Tambo City",
+        "Shire of Blackall Tambo",
+        "Blackall Tambo Shire",
+        "Blackall Tambo Council"
+      ],
+      "Boulia": [
+        "City of Boulia",
+        "Boulia City",
+        "Shire of Boulia",
+        "Boulia Shire",
+        "Boulia Council"
+      ],
+      "Brisbane": [
+        "City of Brisbane",
+        "Brisbane City",
+        "Shire of Brisbane",
+        "Brisbane Shire",
+        "Brisbane Council"
+      ],
+      "Bulloo": [
+        "City of Bulloo",
+        "Bulloo City",
+        "Shire of Bulloo",
+        "Bulloo Shire",
+        "Bulloo Council"
+      ],
+      "Bundaberg": [
+        "City of Bundaberg",
+        "Bundaberg City",
+        "Shire of Bundaberg",
+        "Bundaberg Shire",
+        "Bundaberg Council"
+      ],
+      "Burdekin": [
+        "City of Burdekin",
+        "Burdekin City",
+        "Shire of Burdekin",
+        "Burdekin Shire",
+        "Burdekin Council"
+      ],
+      "Burke": [
+        "City of Burke",
+        "Burke City",
+        "Shire of Burke",
+        "Burke Shire",
+        "Burke Council"
+      ],
+      "Cairns": [
+        "City of Cairns",
+        "Cairns City",
+        "Shire of Cairns",
+        "Cairns Shire",
+        "Cairns Council"
+      ],
+      "Carpentaria": [
+        "City of Carpentaria",
+        "Carpentaria City",
+        "Shire of Carpentaria",
+        "Carpentaria Shire",
+        "Carpentaria Council"
+      ],
+      "Cassowary Coast": [
+        "City of Cassowary Coast",
+        "Cassowary Coast City",
+        "Shire of Cassowary Coast",
+        "Cassowary Coast Shire",
+        "Cassowary Coast Council",
+        "Innisfail",
+        "Tully"
+      ],
+      "Central Highlands": [
+        "Central Highlands (Qld)",
+        "City of Central Highlands",
+        "Central Highlands City",
+        "Shire of Central Highlands",
+        "Central Highlands Shire",
+        "Central Highlands Council"
+      ],
+      "Charters Towers": [
+        "City of Charters Towers",
+        "Charters Towers City",
+        "Shire of Charters Towers",
+        "Charters Towers Shire",
+        "Charters Towers Council"
+      ],
+      "Cherbourg": [
+        "City of Cherbourg",
+        "Cherbourg City",
+        "Shire of Cherbourg",
+        "Cherbourg Shire",
+        "Cherbourg Council"
+      ],
+      "Cloncurry": [
+        "City of Cloncurry",
+        "Cloncurry City",
+        "Shire of Cloncurry",
+        "Cloncurry Shire",
+        "Cloncurry Council"
+      ],
+      "Cook": [
+        "City of Cook",
+        "Cook City",
+        "Shire of Cook",
+        "Cook Shire",
+        "Cook Council"
+      ],
+      "Croydon": [
+        "City of Croydon",
+        "Croydon City",
+        "Shire of Croydon",
+        "Croydon Shire",
+        "Croydon Council"
+      ],
+      "Diamantina": [
+        "City of Diamantina",
+        "Diamantina City",
+        "Shire of Diamantina",
+        "Diamantina Shire",
+        "Diamantina Council"
+      ],
+      "Doomadgee": [
+        "City of Doomadgee",
+        "Doomadgee City",
+        "Shire of Doomadgee",
+        "Doomadgee Shire",
+        "Doomadgee Council"
+      ],
+      "Douglas": [
+        "City of Douglas",
+        "Douglas City",
+        "Shire of Douglas",
+        "Douglas Shire",
+        "Douglas Council"
+      ],
+      "Etheridge": [
+        "City of Etheridge",
+        "Etheridge City",
+        "Shire of Etheridge",
+        "Etheridge Shire",
+        "Etheridge Council"
+      ],
+      "Flinders": [
+        "Flinders (Qld)",
+        "City of Flinders",
+        "Flinders City",
+        "Shire of Flinders",
+        "Flinders Shire",
+        "Flinders Council"
+      ],
+      "Fraser Coast": [
+        "City of Fraser Coast",
+        "Fraser Coast City",
+        "Shire of Fraser Coast",
+        "Fraser Coast Shire",
+        "Fraser Coast Council",
+        "Hervey Bay",
+        "Maryborough"
+      ],
+      "Gladstone": [
+        "City of Gladstone",
+        "Gladstone City",
+        "Shire of Gladstone",
+        "Gladstone Shire",
+        "Gladstone Council"
+      ],
+      "Gold Coast": [
+        "City of Gold Coast",
+        "Gold Coast City",
+        "Shire of Gold Coast",
+        "Gold Coast Shire",
+        "Gold Coast Council"
+      ],
+      "Goondiwindi": [
+        "City of Goondiwindi",
+        "Goondiwindi City",
+        "Shire of Goondiwindi",
+        "Goondiwindi Shire",
+        "Goondiwindi Council"
+      ],
+      "Gympie": [
+        "City of Gympie",
+        "Gympie City",
+        "Shire of Gympie",
+        "Gympie Shire",
+        "Gympie Council"
+      ],
+      "Hinchinbrook": [
+        "City of Hinchinbrook",
+        "Hinchinbrook City",
+        "Shire of Hinchinbrook",
+        "Hinchinbrook Shire",
+        "Hinchinbrook Council"
+      ],
+      "Hope Vale": [
+        "City of Hope Vale",
+        "Hope Vale City",
+        "Shire of Hope Vale",
+        "Hope Vale Shire",
+        "Hope Vale Council"
+      ],
+      "Ipswich": [
+        "City of Ipswich",
+        "Ipswich City",
+        "Shire of Ipswich",
+        "Ipswich Shire",
+        "Ipswich Council"
+      ],
+      "Isaac": [
+        "City of Isaac",
+        "Isaac City",
+        "Shire of Isaac",
+        "Isaac Shire",
+        "Isaac Council"
+      ],
+      "Kowanyama": [
+        "City of Kowanyama",
+        "Kowanyama City",
+        "Shire of Kowanyama",
+        "Kowanyama Shire",
+        "Kowanyama Council"
+      ],
+      "Livingstone": [
+        "City of Livingstone",
+        "Livingstone City",
+        "Shire of Livingstone",
+        "Livingstone Shire",
+        "Livingstone Council"
+      ],
+      "Lockhart River": [
+        "City of Lockhart River",
+        "Lockhart River City",
+        "Shire of Lockhart River",
+        "Lockhart River Shire",
+        "Lockhart River Council"
+      ],
+      "Lockyer Valley": [
+        "City of Lockyer Valley",
+        "Lockyer Valley City",
+        "Shire of Lockyer Valley",
+        "Lockyer Valley Shire",
+        "Lockyer Valley Council",
+        "Gatton"
+      ],
+      "Logan": [
+        "City of Logan",
+        "Logan City",
+        "Shire of Logan",
+        "Logan Shire",
+        "Logan Council"
+      ],
+      "Longreach": [
+        "City of Longreach",
+        "Longreach City",
+        "Shire of Longreach",
+        "Longreach Shire",
+        "Longreach Council"
+      ],
+      "Mackay": [
+        "City of Mackay",
+        "Mackay City",
+        "Shire of Mackay",
+        "Mackay Shire",
+        "Mackay Council"
+      ],
+      "McKinlay": [
+        "City of McKinlay",
+        "McKinlay City",
+        "Shire of McKinlay",
+        "McKinlay Shire",
+        "McKinlay Council"
+      ],
+      "Mapoon": [
+        "City of Mapoon",
+        "Mapoon City",
+        "Shire of Mapoon",
+        "Mapoon Shire",
+        "Mapoon Council"
+      ],
+      "Maranoa": [
+        "City of Maranoa",
+        "Maranoa City",
+        "Shire of Maranoa",
+        "Maranoa Shire",
+        "Maranoa Council"
+      ],
+      "Mareeba": [
+        "City of Mareeba",
+        "Mareeba City",
+        "Shire of Mareeba",
+        "Mareeba Shire",
+        "Mareeba Council"
+      ],
+      "Moreton Bay": [
+        "City of Moreton Bay",
+        "Moreton Bay City",
+        "Shire of Moreton Bay",
+        "Moreton Bay Shire",
+        "Moreton Bay Council"
+      ],
+      "Mornington": [
+        "City of Mornington",
+        "Mornington City",
+        "Shire of Mornington",
+        "Mornington Shire",
+        "Mornington Council"
+      ],
+      "Mount Isa": [
+        "City of Mount Isa",
+        "Mount Isa City",
+        "Shire of Mount Isa",
+        "Mount Isa Shire",
+        "Mount Isa Council"
+      ],
+      "Murweh": [
+        "City of Murweh",
+        "Murweh City",
+        "Shire of Murweh",
+        "Murweh Shire",
+        "Murweh Council"
+      ],
+      "Napranum": [
+        "City of Napranum",
+        "Napranum City",
+        "Shire of Napranum",
+        "Napranum Shire",
+        "Napranum Council"
+      ],
+      "Noosa": [
+        "City of Noosa",
+        "Noosa City",
+        "Shire of Noosa",
+        "Noosa Shire",
+        "Noosa Council"
+      ],
+      "North Burnett": [
+        "City of North Burnett",
+        "North Burnett City",
+        "Shire of North Burnett",
+        "North Burnett Shire",
+        "North Burnett Council",
+        "Gayndah"
+      ],
+      "Northern Peninsula Area": [
+        "City of Northern Peninsula Area",
+        "Northern Peninsula Area City",
+        "Shire of Northern Peninsula Area",
+        "Northern Peninsula Area Shire",
+        "Northern Peninsula Area Council"
+      ],
+      "Palm Island": [
+        "City of Palm Island",
+        "Palm Island City",
+        "Shire of Palm Island",
+        "Palm Island Shire",
+        "Palm Island Council"
+      ],
+      "Paroo": [
+        "City of Paroo",
+        "Paroo City",
+        "Shire of Paroo",
+        "Paroo Shire",
+        "Paroo Council"
+      ],
+      "Pormpuraaw": [
+        "City of Pormpuraaw",
+        "Pormpuraaw City",
+        "Shire of Pormpuraaw",
+        "Pormpuraaw Shire",
+        "Pormpuraaw Council"
+      ],
+      "Quilpie": [
+        "City of Quilpie",
+        "Quilpie City",
+        "Shire of Quilpie",
+        "Quilpie Shire",
+        "Quilpie Council"
+      ],
+      "Redland": [
+        "City of Redland",
+        "Redland City",
+        "Shire of Redland",
+        "Redland Shire",
+        "Redland Council"
+      ],
+      "Richmond": [
+        "City of Richmond",
+        "Richmond City",
+        "Shire of Richmond",
+        "Richmond Shire",
+        "Richmond Council"
+      ],
+      "Rockhampton": [
+        "City of Rockhampton",
+        "Rockhampton City",
+        "Shire of Rockhampton",
+        "Rockhampton Shire",
+        "Rockhampton Council"
+      ],
+      "Scenic Rim": [
+        "City of Scenic Rim",
+        "Scenic Rim City",
+        "Shire of Scenic Rim",
+        "Scenic Rim Shire",
+        "Scenic Rim Council",
+        "Beaudesert"
+      ],
+      "Somerset": [
+        "City of Somerset",
+        "Somerset City",
+        "Shire of Somerset",
+        "Somerset Shire",
+        "Somerset Council"
+      ],
+      "South Burnett": [
+        "City of South Burnett",
+        "South Burnett City",
+        "Shire of South Burnett",
+        "South Burnett Shire",
+        "South Burnett Council",
+        "Kingaroy"
+      ],
+      "Southern Downs": [
+        "City of Southern Downs",
+        "Southern Downs City",
+        "Shire of Southern Downs",
+        "Southern Downs Shire",
+        "Southern Downs Council",
+        "Warwick",
+        "Stanthorpe"
+      ],
+      "Sunshine Coast": [
+        "City of Sunshine Coast",
+        "Sunshine Coast City",
+        "Shire of Sunshine Coast",
+        "Sunshine Coast Shire",
+        "Sunshine Coast Council",
+        "Sunshine Coast Region"
+      ],
+      "Tablelands": [
+        "City of Tablelands",
+        "Tablelands City",
+        "Shire of Tablelands",
+        "Tablelands Shire",
+        "Tablelands Council",
+        "Atherton"
+      ],
+      "Toowoomba": [
+        "City of Toowoomba",
+        "Toowoomba City",
+        "Shire of Toowoomba",
+        "Toowoomba Shire",
+        "Toowoomba Council"
+      ],
+      "Torres": [
+        "City of Torres",
+        "Torres City",
+        "Shire of Torres",
+        "Torres Shire",
+        "Torres Council"
+      ],
+      "Torres Strait Island": [
+        "City of Torres Strait Island",
+        "Torres Strait Island City",
+        "Shire of Torres Strait Island",
+        "Torres Strait Island Shire",
+        "Torres Strait Island Council",
+        "Torres Strait Islands"
+      ],
+      "Townsville": [
+        "City of Townsville",
+        "Townsville City",
+        "Shire of Townsville",
+        "Townsville Shire",
+        "Townsville Council"
+      ],
+      "Weipa": [
+        "City of Weipa",
+        "Weipa City",
+        "Shire of Weipa",
+        "Weipa Shire",
+        "Weipa Council"
+      ],
+      "Western Downs": [
+        "City of Western Downs",
+        "Western Downs City",
+        "Shire of Western Downs",
+        "Western Downs Shire",
+        "Western Downs Council",
+        "Dalby",
+        "Chinchilla"
+      ],
+      "Whitsunday": [
+        "City of Whitsunday",
+        "Whitsunday City",
+        "Shire of Whitsunday",
+        "Whitsunday Shire",
+        "Whitsunday Council",
+        "Whitsundays",
+        "Bowen",
+        "Airlie Beach"
+      ],
+      "Winton": [
+        "City of Winton",
+        "Winton City",
+        "Shire of Winton",
+        "Winton Shire",
+        "Winton Council"
+      ],
+      "Woorabinda": [
+        "City of Woorabinda",
+        "Woorabinda City",
+        "Shire of Woorabinda",
+        "Woorabinda Shire",
+        "Woorabinda Council"
+      ],
+      "Wujal Wujal": [
+        "City of Wujal Wujal",
+        "Wujal Wujal City",
+        "Shire of Wujal Wujal",
+        "Wujal Wujal Shire",
+        "Wujal Wujal Council"
+      ],
+      "Yarrabah": [
+        "City of Yarrabah",
+        "Yarrabah City",
+        "Shire of Yarrabah",
+        "Yarrabah Shire",
+        "Yarrabah Council"
+      ]
+    },
+    "defaultCenter": [
+      -21.5,
+      145.5
+    ],
+    "defaultZoom": 5,
+    "totalItems": 78,
+    "tags": [
+      "AUS",
+      "AU-QLD",
+      "2nd-level-divisions",
+      "aus-lga"
+    ]
+  },
+  {
+    "id": "aus-lga-wa",
+    "title": "Western Australia: Local Government Areas (137)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/aus-lga/wa.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Albany": [
+        "City of Albany",
+        "Albany City",
+        "Shire of Albany",
+        "Albany Shire",
+        "Albany Council"
+      ],
+      "Armadale": [
+        "City of Armadale",
+        "Armadale City",
+        "Shire of Armadale",
+        "Armadale Shire",
+        "Armadale Council"
+      ],
+      "Ashburton": [
+        "City of Ashburton",
+        "Ashburton City",
+        "Shire of Ashburton",
+        "Ashburton Shire",
+        "Ashburton Council"
+      ],
+      "Augusta Margaret River": [
+        "City of Augusta Margaret River",
+        "Augusta Margaret River City",
+        "Shire of Augusta Margaret River",
+        "Augusta Margaret River Shire",
+        "Augusta Margaret River Council",
+        "Augusta-Margaret River",
+        "Margaret River"
+      ],
+      "Bassendean": [
+        "City of Bassendean",
+        "Bassendean City",
+        "Shire of Bassendean",
+        "Bassendean Shire",
+        "Bassendean Council"
+      ],
+      "Bayswater": [
+        "City of Bayswater",
+        "Bayswater City",
+        "Shire of Bayswater",
+        "Bayswater Shire",
+        "Bayswater Council"
+      ],
+      "Belmont": [
+        "City of Belmont",
+        "Belmont City",
+        "Shire of Belmont",
+        "Belmont Shire",
+        "Belmont Council"
+      ],
+      "Beverley": [
+        "City of Beverley",
+        "Beverley City",
+        "Shire of Beverley",
+        "Beverley Shire",
+        "Beverley Council"
+      ],
+      "Boddington": [
+        "City of Boddington",
+        "Boddington City",
+        "Shire of Boddington",
+        "Boddington Shire",
+        "Boddington Council"
+      ],
+      "Boyup Brook": [
+        "City of Boyup Brook",
+        "Boyup Brook City",
+        "Shire of Boyup Brook",
+        "Boyup Brook Shire",
+        "Boyup Brook Council"
+      ],
+      "Bridgetown-Greenbushes": [
+        "Bridgetown Greenbushes",
+        "City of Bridgetown-Greenbushes",
+        "Bridgetown-Greenbushes City",
+        "Shire of Bridgetown-Greenbushes",
+        "Bridgetown-Greenbushes Shire",
+        "Bridgetown-Greenbushes Council",
+        "Bridgetown"
+      ],
+      "Brookton": [
+        "City of Brookton",
+        "Brookton City",
+        "Shire of Brookton",
+        "Brookton Shire",
+        "Brookton Council"
+      ],
+      "Broome": [
+        "City of Broome",
+        "Broome City",
+        "Shire of Broome",
+        "Broome Shire",
+        "Broome Council"
+      ],
+      "Broomehill-Tambellup": [
+        "Broomehill Tambellup",
+        "City of Broomehill-Tambellup",
+        "Broomehill-Tambellup City",
+        "Shire of Broomehill-Tambellup",
+        "Broomehill-Tambellup Shire",
+        "Broomehill-Tambellup Council",
+        "Broomehill",
+        "Tambellup"
+      ],
+      "Bruce Rock": [
+        "City of Bruce Rock",
+        "Bruce Rock City",
+        "Shire of Bruce Rock",
+        "Bruce Rock Shire",
+        "Bruce Rock Council"
+      ],
+      "Bunbury": [
+        "City of Bunbury",
+        "Bunbury City",
+        "Shire of Bunbury",
+        "Bunbury Shire",
+        "Bunbury Council"
+      ],
+      "Busselton": [
+        "City of Busselton",
+        "Busselton City",
+        "Shire of Busselton",
+        "Busselton Shire",
+        "Busselton Council"
+      ],
+      "Cambridge": [
+        "City of Cambridge",
+        "Cambridge City",
+        "Shire of Cambridge",
+        "Cambridge Shire",
+        "Cambridge Council"
+      ],
+      "Canning": [
+        "City of Canning",
+        "Canning City",
+        "Shire of Canning",
+        "Canning Shire",
+        "Canning Council"
+      ],
+      "Capel": [
+        "City of Capel",
+        "Capel City",
+        "Shire of Capel",
+        "Capel Shire",
+        "Capel Council"
+      ],
+      "Carnamah": [
+        "City of Carnamah",
+        "Carnamah City",
+        "Shire of Carnamah",
+        "Carnamah Shire",
+        "Carnamah Council"
+      ],
+      "Carnarvon": [
+        "City of Carnarvon",
+        "Carnarvon City",
+        "Shire of Carnarvon",
+        "Carnarvon Shire",
+        "Carnarvon Council"
+      ],
+      "Chapman Valley": [
+        "City of Chapman Valley",
+        "Chapman Valley City",
+        "Shire of Chapman Valley",
+        "Chapman Valley Shire",
+        "Chapman Valley Council"
+      ],
+      "Chittering": [
+        "City of Chittering",
+        "Chittering City",
+        "Shire of Chittering",
+        "Chittering Shire",
+        "Chittering Council"
+      ],
+      "Claremont": [
+        "City of Claremont",
+        "Claremont City",
+        "Shire of Claremont",
+        "Claremont Shire",
+        "Claremont Council"
+      ],
+      "Cockburn": [
+        "City of Cockburn",
+        "Cockburn City",
+        "Shire of Cockburn",
+        "Cockburn Shire",
+        "Cockburn Council"
+      ],
+      "Collie": [
+        "City of Collie",
+        "Collie City",
+        "Shire of Collie",
+        "Collie Shire",
+        "Collie Council"
+      ],
+      "Coolgardie": [
+        "City of Coolgardie",
+        "Coolgardie City",
+        "Shire of Coolgardie",
+        "Coolgardie Shire",
+        "Coolgardie Council"
+      ],
+      "Coorow": [
+        "City of Coorow",
+        "Coorow City",
+        "Shire of Coorow",
+        "Coorow Shire",
+        "Coorow Council"
+      ],
+      "Corrigin": [
+        "City of Corrigin",
+        "Corrigin City",
+        "Shire of Corrigin",
+        "Corrigin Shire",
+        "Corrigin Council"
+      ],
+      "Cottesloe": [
+        "City of Cottesloe",
+        "Cottesloe City",
+        "Shire of Cottesloe",
+        "Cottesloe Shire",
+        "Cottesloe Council"
+      ],
+      "Cranbrook": [
+        "City of Cranbrook",
+        "Cranbrook City",
+        "Shire of Cranbrook",
+        "Cranbrook Shire",
+        "Cranbrook Council"
+      ],
+      "Cuballing": [
+        "City of Cuballing",
+        "Cuballing City",
+        "Shire of Cuballing",
+        "Cuballing Shire",
+        "Cuballing Council"
+      ],
+      "Cue": [
+        "City of Cue",
+        "Cue City",
+        "Shire of Cue",
+        "Cue Shire",
+        "Cue Council"
+      ],
+      "Cunderdin": [
+        "City of Cunderdin",
+        "Cunderdin City",
+        "Shire of Cunderdin",
+        "Cunderdin Shire",
+        "Cunderdin Council"
+      ],
+      "Dalwallinu": [
+        "City of Dalwallinu",
+        "Dalwallinu City",
+        "Shire of Dalwallinu",
+        "Dalwallinu Shire",
+        "Dalwallinu Council"
+      ],
+      "Dandaragan": [
+        "City of Dandaragan",
+        "Dandaragan City",
+        "Shire of Dandaragan",
+        "Dandaragan Shire",
+        "Dandaragan Council"
+      ],
+      "Dardanup": [
+        "City of Dardanup",
+        "Dardanup City",
+        "Shire of Dardanup",
+        "Dardanup Shire",
+        "Dardanup Council"
+      ],
+      "Denmark": [
+        "City of Denmark",
+        "Denmark City",
+        "Shire of Denmark",
+        "Denmark Shire",
+        "Denmark Council"
+      ],
+      "Derby-West Kimberley": [
+        "Derby West Kimberley",
+        "City of Derby-West Kimberley",
+        "Derby-West Kimberley City",
+        "Shire of Derby-West Kimberley",
+        "Derby-West Kimberley Shire",
+        "Derby-West Kimberley Council",
+        "Derby",
+        "West Kimberley"
+      ],
+      "Donnybrook-Balingup": [
+        "Donnybrook Balingup",
+        "City of Donnybrook-Balingup",
+        "Donnybrook-Balingup City",
+        "Shire of Donnybrook-Balingup",
+        "Donnybrook-Balingup Shire",
+        "Donnybrook-Balingup Council",
+        "Donnybrook"
+      ],
+      "Dowerin": [
+        "City of Dowerin",
+        "Dowerin City",
+        "Shire of Dowerin",
+        "Dowerin Shire",
+        "Dowerin Council"
+      ],
+      "Dumbleyung": [
+        "City of Dumbleyung",
+        "Dumbleyung City",
+        "Shire of Dumbleyung",
+        "Dumbleyung Shire",
+        "Dumbleyung Council"
+      ],
+      "Dundas": [
+        "City of Dundas",
+        "Dundas City",
+        "Shire of Dundas",
+        "Dundas Shire",
+        "Dundas Council"
+      ],
+      "East Fremantle": [
+        "City of East Fremantle",
+        "East Fremantle City",
+        "Shire of East Fremantle",
+        "East Fremantle Shire",
+        "East Fremantle Council"
+      ],
+      "East Pilbara": [
+        "City of East Pilbara",
+        "East Pilbara City",
+        "Shire of East Pilbara",
+        "East Pilbara Shire",
+        "East Pilbara Council"
+      ],
+      "Esperance": [
+        "City of Esperance",
+        "Esperance City",
+        "Shire of Esperance",
+        "Esperance Shire",
+        "Esperance Council"
+      ],
+      "Exmouth": [
+        "City of Exmouth",
+        "Exmouth City",
+        "Shire of Exmouth",
+        "Exmouth Shire",
+        "Exmouth Council"
+      ],
+      "Fremantle": [
+        "City of Fremantle",
+        "Fremantle City",
+        "Shire of Fremantle",
+        "Fremantle Shire",
+        "Fremantle Council"
+      ],
+      "Gingin": [
+        "City of Gingin",
+        "Gingin City",
+        "Shire of Gingin",
+        "Gingin Shire",
+        "Gingin Council"
+      ],
+      "Gnowangerup": [
+        "City of Gnowangerup",
+        "Gnowangerup City",
+        "Shire of Gnowangerup",
+        "Gnowangerup Shire",
+        "Gnowangerup Council"
+      ],
+      "Goomalling": [
+        "City of Goomalling",
+        "Goomalling City",
+        "Shire of Goomalling",
+        "Goomalling Shire",
+        "Goomalling Council"
+      ],
+      "Gosnells": [
+        "City of Gosnells",
+        "Gosnells City",
+        "Shire of Gosnells",
+        "Gosnells Shire",
+        "Gosnells Council"
+      ],
+      "Greater Geraldton": [
+        "City of Greater Geraldton",
+        "Greater Geraldton City",
+        "Shire of Greater Geraldton",
+        "Greater Geraldton Shire",
+        "Greater Geraldton Council",
+        "Geraldton"
+      ],
+      "Halls Creek": [
+        "City of Halls Creek",
+        "Halls Creek City",
+        "Shire of Halls Creek",
+        "Halls Creek Shire",
+        "Halls Creek Council"
+      ],
+      "Harvey": [
+        "City of Harvey",
+        "Harvey City",
+        "Shire of Harvey",
+        "Harvey Shire",
+        "Harvey Council"
+      ],
+      "Irwin": [
+        "City of Irwin",
+        "Irwin City",
+        "Shire of Irwin",
+        "Irwin Shire",
+        "Irwin Council"
+      ],
+      "Jerramungup": [
+        "City of Jerramungup",
+        "Jerramungup City",
+        "Shire of Jerramungup",
+        "Jerramungup Shire",
+        "Jerramungup Council"
+      ],
+      "Joondalup": [
+        "City of Joondalup",
+        "Joondalup City",
+        "Shire of Joondalup",
+        "Joondalup Shire",
+        "Joondalup Council"
+      ],
+      "Kalamunda": [
+        "City of Kalamunda",
+        "Kalamunda City",
+        "Shire of Kalamunda",
+        "Kalamunda Shire",
+        "Kalamunda Council"
+      ],
+      "Kalgoorlie-Boulder": [
+        "Kalgoorlie Boulder",
+        "City of Kalgoorlie-Boulder",
+        "Kalgoorlie-Boulder City",
+        "Shire of Kalgoorlie-Boulder",
+        "Kalgoorlie-Boulder Shire",
+        "Kalgoorlie-Boulder Council",
+        "Kalgoorlie"
+      ],
+      "Karratha": [
+        "City of Karratha",
+        "Karratha City",
+        "Shire of Karratha",
+        "Karratha Shire",
+        "Karratha Council"
+      ],
+      "Katanning": [
+        "City of Katanning",
+        "Katanning City",
+        "Shire of Katanning",
+        "Katanning Shire",
+        "Katanning Council"
+      ],
+      "Kellerberrin": [
+        "City of Kellerberrin",
+        "Kellerberrin City",
+        "Shire of Kellerberrin",
+        "Kellerberrin Shire",
+        "Kellerberrin Council"
+      ],
+      "Kent": [
+        "City of Kent",
+        "Kent City",
+        "Shire of Kent",
+        "Kent Shire",
+        "Kent Council"
+      ],
+      "Kojonup": [
+        "City of Kojonup",
+        "Kojonup City",
+        "Shire of Kojonup",
+        "Kojonup Shire",
+        "Kojonup Council"
+      ],
+      "Kondinin": [
+        "City of Kondinin",
+        "Kondinin City",
+        "Shire of Kondinin",
+        "Kondinin Shire",
+        "Kondinin Council"
+      ],
+      "Koorda": [
+        "City of Koorda",
+        "Koorda City",
+        "Shire of Koorda",
+        "Koorda Shire",
+        "Koorda Council"
+      ],
+      "Kulin": [
+        "City of Kulin",
+        "Kulin City",
+        "Shire of Kulin",
+        "Kulin Shire",
+        "Kulin Council"
+      ],
+      "Kwinana": [
+        "City of Kwinana",
+        "Kwinana City",
+        "Shire of Kwinana",
+        "Kwinana Shire",
+        "Kwinana Council"
+      ],
+      "Lake Grace": [
+        "City of Lake Grace",
+        "Lake Grace City",
+        "Shire of Lake Grace",
+        "Lake Grace Shire",
+        "Lake Grace Council"
+      ],
+      "Laverton": [
+        "City of Laverton",
+        "Laverton City",
+        "Shire of Laverton",
+        "Laverton Shire",
+        "Laverton Council"
+      ],
+      "Leonora": [
+        "City of Leonora",
+        "Leonora City",
+        "Shire of Leonora",
+        "Leonora Shire",
+        "Leonora Council"
+      ],
+      "Mandurah": [
+        "City of Mandurah",
+        "Mandurah City",
+        "Shire of Mandurah",
+        "Mandurah Shire",
+        "Mandurah Council"
+      ],
+      "Manjimup": [
+        "City of Manjimup",
+        "Manjimup City",
+        "Shire of Manjimup",
+        "Manjimup Shire",
+        "Manjimup Council"
+      ],
+      "Meekatharra": [
+        "City of Meekatharra",
+        "Meekatharra City",
+        "Shire of Meekatharra",
+        "Meekatharra Shire",
+        "Meekatharra Council"
+      ],
+      "Melville": [
+        "City of Melville",
+        "Melville City",
+        "Shire of Melville",
+        "Melville Shire",
+        "Melville Council"
+      ],
+      "Menzies": [
+        "City of Menzies",
+        "Menzies City",
+        "Shire of Menzies",
+        "Menzies Shire",
+        "Menzies Council"
+      ],
+      "Merredin": [
+        "City of Merredin",
+        "Merredin City",
+        "Shire of Merredin",
+        "Merredin Shire",
+        "Merredin Council"
+      ],
+      "Mingenew": [
+        "City of Mingenew",
+        "Mingenew City",
+        "Shire of Mingenew",
+        "Mingenew Shire",
+        "Mingenew Council"
+      ],
+      "Moora": [
+        "City of Moora",
+        "Moora City",
+        "Shire of Moora",
+        "Moora Shire",
+        "Moora Council"
+      ],
+      "Morawa": [
+        "City of Morawa",
+        "Morawa City",
+        "Shire of Morawa",
+        "Morawa Shire",
+        "Morawa Council"
+      ],
+      "Mosman Park": [
+        "City of Mosman Park",
+        "Mosman Park City",
+        "Shire of Mosman Park",
+        "Mosman Park Shire",
+        "Mosman Park Council"
+      ],
+      "Mount Magnet": [
+        "City of Mount Magnet",
+        "Mount Magnet City",
+        "Shire of Mount Magnet",
+        "Mount Magnet Shire",
+        "Mount Magnet Council"
+      ],
+      "Mount Marshall": [
+        "City of Mount Marshall",
+        "Mount Marshall City",
+        "Shire of Mount Marshall",
+        "Mount Marshall Shire",
+        "Mount Marshall Council"
+      ],
+      "Mukinbudin": [
+        "City of Mukinbudin",
+        "Mukinbudin City",
+        "Shire of Mukinbudin",
+        "Mukinbudin Shire",
+        "Mukinbudin Council"
+      ],
+      "Mundaring": [
+        "City of Mundaring",
+        "Mundaring City",
+        "Shire of Mundaring",
+        "Mundaring Shire",
+        "Mundaring Council"
+      ],
+      "Murchison": [
+        "City of Murchison",
+        "Murchison City",
+        "Shire of Murchison",
+        "Murchison Shire",
+        "Murchison Council"
+      ],
+      "Murray": [
+        "City of Murray",
+        "Murray City",
+        "Shire of Murray",
+        "Murray Shire",
+        "Murray Council"
+      ],
+      "Nannup": [
+        "City of Nannup",
+        "Nannup City",
+        "Shire of Nannup",
+        "Nannup Shire",
+        "Nannup Council"
+      ],
+      "Narembeen": [
+        "City of Narembeen",
+        "Narembeen City",
+        "Shire of Narembeen",
+        "Narembeen Shire",
+        "Narembeen Council"
+      ],
+      "Narrogin": [
+        "City of Narrogin",
+        "Narrogin City",
+        "Shire of Narrogin",
+        "Narrogin Shire",
+        "Narrogin Council"
+      ],
+      "Nedlands": [
+        "City of Nedlands",
+        "Nedlands City",
+        "Shire of Nedlands",
+        "Nedlands Shire",
+        "Nedlands Council"
+      ],
+      "Ngaanyatjarraku": [
+        "City of Ngaanyatjarraku",
+        "Ngaanyatjarraku City",
+        "Shire of Ngaanyatjarraku",
+        "Ngaanyatjarraku Shire",
+        "Ngaanyatjarraku Council"
+      ],
+      "Northam": [
+        "City of Northam",
+        "Northam City",
+        "Shire of Northam",
+        "Northam Shire",
+        "Northam Council"
+      ],
+      "Northampton": [
+        "City of Northampton",
+        "Northampton City",
+        "Shire of Northampton",
+        "Northampton Shire",
+        "Northampton Council"
+      ],
+      "Nungarin": [
+        "City of Nungarin",
+        "Nungarin City",
+        "Shire of Nungarin",
+        "Nungarin Shire",
+        "Nungarin Council"
+      ],
+      "Peppermint Grove": [
+        "City of Peppermint Grove",
+        "Peppermint Grove City",
+        "Shire of Peppermint Grove",
+        "Peppermint Grove Shire",
+        "Peppermint Grove Council"
+      ],
+      "Perenjori": [
+        "City of Perenjori",
+        "Perenjori City",
+        "Shire of Perenjori",
+        "Perenjori Shire",
+        "Perenjori Council"
+      ],
+      "Perth": [
+        "City of Perth",
+        "Perth City",
+        "Shire of Perth",
+        "Perth Shire",
+        "Perth Council"
+      ],
+      "Pingelly": [
+        "City of Pingelly",
+        "Pingelly City",
+        "Shire of Pingelly",
+        "Pingelly Shire",
+        "Pingelly Council"
+      ],
+      "Plantagenet": [
+        "City of Plantagenet",
+        "Plantagenet City",
+        "Shire of Plantagenet",
+        "Plantagenet Shire",
+        "Plantagenet Council"
+      ],
+      "Port Hedland": [
+        "City of Port Hedland",
+        "Port Hedland City",
+        "Shire of Port Hedland",
+        "Port Hedland Shire",
+        "Port Hedland Council"
+      ],
+      "Quairading": [
+        "City of Quairading",
+        "Quairading City",
+        "Shire of Quairading",
+        "Quairading Shire",
+        "Quairading Council"
+      ],
+      "Ravensthorpe": [
+        "City of Ravensthorpe",
+        "Ravensthorpe City",
+        "Shire of Ravensthorpe",
+        "Ravensthorpe Shire",
+        "Ravensthorpe Council"
+      ],
+      "Rockingham": [
+        "City of Rockingham",
+        "Rockingham City",
+        "Shire of Rockingham",
+        "Rockingham Shire",
+        "Rockingham Council"
+      ],
+      "Sandstone": [
+        "City of Sandstone",
+        "Sandstone City",
+        "Shire of Sandstone",
+        "Sandstone Shire",
+        "Sandstone Council"
+      ],
+      "Serpentine-Jarrahdale": [
+        "Serpentine Jarrahdale",
+        "City of Serpentine-Jarrahdale",
+        "Serpentine-Jarrahdale City",
+        "Shire of Serpentine-Jarrahdale",
+        "Serpentine-Jarrahdale Shire",
+        "Serpentine-Jarrahdale Council",
+        "Serpentine"
+      ],
+      "Shark Bay": [
+        "City of Shark Bay",
+        "Shark Bay City",
+        "Shire of Shark Bay",
+        "Shark Bay Shire",
+        "Shark Bay Council"
+      ],
+      "South Perth": [
+        "City of South Perth",
+        "South Perth City",
+        "Shire of South Perth",
+        "South Perth Shire",
+        "South Perth Council"
+      ],
+      "Stirling": [
+        "City of Stirling",
+        "Stirling City",
+        "Shire of Stirling",
+        "Stirling Shire",
+        "Stirling Council"
+      ],
+      "Subiaco": [
+        "City of Subiaco",
+        "Subiaco City",
+        "Shire of Subiaco",
+        "Subiaco Shire",
+        "Subiaco Council"
+      ],
+      "Swan": [
+        "City of Swan",
+        "Swan City",
+        "Shire of Swan",
+        "Swan Shire",
+        "Swan Council"
+      ],
+      "Tammin": [
+        "City of Tammin",
+        "Tammin City",
+        "Shire of Tammin",
+        "Tammin Shire",
+        "Tammin Council"
+      ],
+      "Three Springs": [
+        "City of Three Springs",
+        "Three Springs City",
+        "Shire of Three Springs",
+        "Three Springs Shire",
+        "Three Springs Council"
+      ],
+      "Toodyay": [
+        "City of Toodyay",
+        "Toodyay City",
+        "Shire of Toodyay",
+        "Toodyay Shire",
+        "Toodyay Council"
+      ],
+      "Trayning": [
+        "City of Trayning",
+        "Trayning City",
+        "Shire of Trayning",
+        "Trayning Shire",
+        "Trayning Council"
+      ],
+      "Upper Gascoyne": [
+        "City of Upper Gascoyne",
+        "Upper Gascoyne City",
+        "Shire of Upper Gascoyne",
+        "Upper Gascoyne Shire",
+        "Upper Gascoyne Council"
+      ],
+      "Victoria Park": [
+        "City of Victoria Park",
+        "Victoria Park City",
+        "Shire of Victoria Park",
+        "Victoria Park Shire",
+        "Victoria Park Council"
+      ],
+      "Victoria Plains": [
+        "City of Victoria Plains",
+        "Victoria Plains City",
+        "Shire of Victoria Plains",
+        "Victoria Plains Shire",
+        "Victoria Plains Council"
+      ],
+      "Vincent": [
+        "City of Vincent",
+        "Vincent City",
+        "Shire of Vincent",
+        "Vincent Shire",
+        "Vincent Council"
+      ],
+      "Wagin": [
+        "City of Wagin",
+        "Wagin City",
+        "Shire of Wagin",
+        "Wagin Shire",
+        "Wagin Council"
+      ],
+      "Wandering": [
+        "City of Wandering",
+        "Wandering City",
+        "Shire of Wandering",
+        "Wandering Shire",
+        "Wandering Council"
+      ],
+      "Wanneroo": [
+        "City of Wanneroo",
+        "Wanneroo City",
+        "Shire of Wanneroo",
+        "Wanneroo Shire",
+        "Wanneroo Council"
+      ],
+      "Waroona": [
+        "City of Waroona",
+        "Waroona City",
+        "Shire of Waroona",
+        "Waroona Shire",
+        "Waroona Council"
+      ],
+      "West Arthur": [
+        "City of West Arthur",
+        "West Arthur City",
+        "Shire of West Arthur",
+        "West Arthur Shire",
+        "West Arthur Council"
+      ],
+      "Westonia": [
+        "City of Westonia",
+        "Westonia City",
+        "Shire of Westonia",
+        "Westonia Shire",
+        "Westonia Council"
+      ],
+      "Wickepin": [
+        "City of Wickepin",
+        "Wickepin City",
+        "Shire of Wickepin",
+        "Wickepin Shire",
+        "Wickepin Council"
+      ],
+      "Williams": [
+        "City of Williams",
+        "Williams City",
+        "Shire of Williams",
+        "Williams Shire",
+        "Williams Council"
+      ],
+      "Wiluna": [
+        "City of Wiluna",
+        "Wiluna City",
+        "Shire of Wiluna",
+        "Wiluna Shire",
+        "Wiluna Council"
+      ],
+      "Wongan-Ballidu": [
+        "Wongan Ballidu",
+        "City of Wongan-Ballidu",
+        "Wongan-Ballidu City",
+        "Shire of Wongan-Ballidu",
+        "Wongan-Ballidu Shire",
+        "Wongan-Ballidu Council",
+        "Wongan Hills"
+      ],
+      "Woodanilling": [
+        "City of Woodanilling",
+        "Woodanilling City",
+        "Shire of Woodanilling",
+        "Woodanilling Shire",
+        "Woodanilling Council"
+      ],
+      "Wyalkatchem": [
+        "City of Wyalkatchem",
+        "Wyalkatchem City",
+        "Shire of Wyalkatchem",
+        "Wyalkatchem Shire",
+        "Wyalkatchem Council"
+      ],
+      "Wyndham-East Kimberley": [
+        "Wyndham East Kimberley",
+        "City of Wyndham-East Kimberley",
+        "Wyndham-East Kimberley City",
+        "Shire of Wyndham-East Kimberley",
+        "Wyndham-East Kimberley Shire",
+        "Wyndham-East Kimberley Council",
+        "Wyndham",
+        "East Kimberley",
+        "Kununurra"
+      ],
+      "Yalgoo": [
+        "City of Yalgoo",
+        "Yalgoo City",
+        "Shire of Yalgoo",
+        "Yalgoo Shire",
+        "Yalgoo Council"
+      ],
+      "Yilgarn": [
+        "City of Yilgarn",
+        "Yilgarn City",
+        "Shire of Yilgarn",
+        "Yilgarn Shire",
+        "Yilgarn Council"
+      ],
+      "York": [
+        "City of York",
+        "York City",
+        "Shire of York",
+        "York Shire",
+        "York Council"
+      ]
+    },
+    "defaultCenter": [
+      -26,
+      121
+    ],
+    "defaultZoom": 5,
+    "totalItems": 137,
+    "tags": [
+      "AUS",
+      "AU-WA",
+      "2nd-level-divisions",
+      "aus-lga"
+    ]
+  },
+  {
+    "id": "aus-lga-sa",
+    "title": "South Australia: Local Government Areas (70)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/aus-lga/sa.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Adelaide": [
+        "City of Adelaide",
+        "Adelaide City",
+        "Shire of Adelaide",
+        "Adelaide Shire",
+        "Adelaide Council"
+      ],
+      "Adelaide Hills": [
+        "City of Adelaide Hills",
+        "Adelaide Hills City",
+        "Shire of Adelaide Hills",
+        "Adelaide Hills Shire",
+        "Adelaide Hills Council"
+      ],
+      "Adelaide Plains": [
+        "City of Adelaide Plains",
+        "Adelaide Plains City",
+        "Shire of Adelaide Plains",
+        "Adelaide Plains Shire",
+        "Adelaide Plains Council",
+        "Mallala"
+      ],
+      "Alexandrina": [
+        "City of Alexandrina",
+        "Alexandrina City",
+        "Shire of Alexandrina",
+        "Alexandrina Shire",
+        "Alexandrina Council"
+      ],
+      "Anangu Pitjantjatjara Yankunytjatjara": [
+        "City of Anangu Pitjantjatjara Yankunytjatjara",
+        "Anangu Pitjantjatjara Yankunytjatjara City",
+        "Shire of Anangu Pitjantjatjara Yankunytjatjara",
+        "Anangu Pitjantjatjara Yankunytjatjara Shire",
+        "Anangu Pitjantjatjara Yankunytjatjara Council",
+        "APY",
+        "APY Lands",
+        "Anangu Pitjantjatjara"
+      ],
+      "Barossa": [
+        "City of Barossa",
+        "Barossa City",
+        "Shire of Barossa",
+        "Barossa Shire",
+        "Barossa Council"
+      ],
+      "Barunga West": [
+        "City of Barunga West",
+        "Barunga West City",
+        "Shire of Barunga West",
+        "Barunga West Shire",
+        "Barunga West Council"
+      ],
+      "Berri Barmera": [
+        "City of Berri Barmera",
+        "Berri Barmera City",
+        "Shire of Berri Barmera",
+        "Berri Barmera Shire",
+        "Berri Barmera Council",
+        "Berri-Barmera",
+        "Berri"
+      ],
+      "Burnside": [
+        "City of Burnside",
+        "Burnside City",
+        "Shire of Burnside",
+        "Burnside Shire",
+        "Burnside Council"
+      ],
+      "Campbelltown": [
+        "Campbelltown (SA)",
+        "City of Campbelltown",
+        "Campbelltown City",
+        "Shire of Campbelltown",
+        "Campbelltown Shire",
+        "Campbelltown Council"
+      ],
+      "Ceduna": [
+        "City of Ceduna",
+        "Ceduna City",
+        "Shire of Ceduna",
+        "Ceduna Shire",
+        "Ceduna Council"
+      ],
+      "Charles Sturt": [
+        "City of Charles Sturt",
+        "Charles Sturt City",
+        "Shire of Charles Sturt",
+        "Charles Sturt Shire",
+        "Charles Sturt Council"
+      ],
+      "Clare and Gilbert Valleys": [
+        "City of Clare and Gilbert Valleys",
+        "Clare and Gilbert Valleys City",
+        "Shire of Clare and Gilbert Valleys",
+        "Clare and Gilbert Valleys Shire",
+        "Clare and Gilbert Valleys Council",
+        "Clare & Gilbert Valleys",
+        "Clare Valley",
+        "Clare"
+      ],
+      "Cleve": [
+        "City of Cleve",
+        "Cleve City",
+        "Shire of Cleve",
+        "Cleve Shire",
+        "Cleve Council"
+      ],
+      "Coober Pedy": [
+        "City of Coober Pedy",
+        "Coober Pedy City",
+        "Shire of Coober Pedy",
+        "Coober Pedy Shire",
+        "Coober Pedy Council"
+      ],
+      "Copper Coast": [
+        "City of Copper Coast",
+        "Copper Coast City",
+        "Shire of Copper Coast",
+        "Copper Coast Shire",
+        "Copper Coast Council"
+      ],
+      "Elliston": [
+        "City of Elliston",
+        "Elliston City",
+        "Shire of Elliston",
+        "Elliston Shire",
+        "Elliston Council"
+      ],
+      "Flinders Ranges": [
+        "City of Flinders Ranges",
+        "Flinders Ranges City",
+        "Shire of Flinders Ranges",
+        "Flinders Ranges Shire",
+        "Flinders Ranges Council"
+      ],
+      "Franklin Harbour": [
+        "City of Franklin Harbour",
+        "Franklin Harbour City",
+        "Shire of Franklin Harbour",
+        "Franklin Harbour Shire",
+        "Franklin Harbour Council"
+      ],
+      "Gawler": [
+        "City of Gawler",
+        "Gawler City",
+        "Shire of Gawler",
+        "Gawler Shire",
+        "Gawler Council"
+      ],
+      "Goyder": [
+        "City of Goyder",
+        "Goyder City",
+        "Shire of Goyder",
+        "Goyder Shire",
+        "Goyder Council"
+      ],
+      "Grant": [
+        "City of Grant",
+        "Grant City",
+        "Shire of Grant",
+        "Grant Shire",
+        "Grant Council"
+      ],
+      "Holdfast Bay": [
+        "City of Holdfast Bay",
+        "Holdfast Bay City",
+        "Shire of Holdfast Bay",
+        "Holdfast Bay Shire",
+        "Holdfast Bay Council"
+      ],
+      "Kangaroo Island": [
+        "City of Kangaroo Island",
+        "Kangaroo Island City",
+        "Shire of Kangaroo Island",
+        "Kangaroo Island Shire",
+        "Kangaroo Island Council"
+      ],
+      "Karoonda East Murray": [
+        "City of Karoonda East Murray",
+        "Karoonda East Murray City",
+        "Shire of Karoonda East Murray",
+        "Karoonda East Murray Shire",
+        "Karoonda East Murray Council",
+        "Karoonda"
+      ],
+      "Kimba": [
+        "City of Kimba",
+        "Kimba City",
+        "Shire of Kimba",
+        "Kimba Shire",
+        "Kimba Council"
+      ],
+      "Kingston": [
+        "Kingston (SA)",
+        "City of Kingston",
+        "Kingston City",
+        "Shire of Kingston",
+        "Kingston Shire",
+        "Kingston Council"
+      ],
+      "Light": [
+        "City of Light",
+        "Light City",
+        "Shire of Light",
+        "Light Shire",
+        "Light Council"
+      ],
+      "Lower Eyre": [
+        "City of Lower Eyre",
+        "Lower Eyre City",
+        "Shire of Lower Eyre",
+        "Lower Eyre Shire",
+        "Lower Eyre Council"
+      ],
+      "Loxton Waikerie": [
+        "City of Loxton Waikerie",
+        "Loxton Waikerie City",
+        "Shire of Loxton Waikerie",
+        "Loxton Waikerie Shire",
+        "Loxton Waikerie Council",
+        "Loxton-Waikerie",
+        "Loxton",
+        "Waikerie"
+      ],
+      "Maralinga Tjarutja": [
+        "City of Maralinga Tjarutja",
+        "Maralinga Tjarutja City",
+        "Shire of Maralinga Tjarutja",
+        "Maralinga Tjarutja Shire",
+        "Maralinga Tjarutja Council"
+      ],
+      "Marion": [
+        "City of Marion",
+        "Marion City",
+        "Shire of Marion",
+        "Marion Shire",
+        "Marion Council"
+      ],
+      "Mid Murray": [
+        "City of Mid Murray",
+        "Mid Murray City",
+        "Shire of Mid Murray",
+        "Mid Murray Shire",
+        "Mid Murray Council"
+      ],
+      "Mitcham": [
+        "City of Mitcham",
+        "Mitcham City",
+        "Shire of Mitcham",
+        "Mitcham Shire",
+        "Mitcham Council"
+      ],
+      "Mount Barker": [
+        "City of Mount Barker",
+        "Mount Barker City",
+        "Shire of Mount Barker",
+        "Mount Barker Shire",
+        "Mount Barker Council"
+      ],
+      "Mount Gambier": [
+        "City of Mount Gambier",
+        "Mount Gambier City",
+        "Shire of Mount Gambier",
+        "Mount Gambier Shire",
+        "Mount Gambier Council"
+      ],
+      "Mount Remarkable": [
+        "City of Mount Remarkable",
+        "Mount Remarkable City",
+        "Shire of Mount Remarkable",
+        "Mount Remarkable Shire",
+        "Mount Remarkable Council"
+      ],
+      "Murray Bridge": [
+        "City of Murray Bridge",
+        "Murray Bridge City",
+        "Shire of Murray Bridge",
+        "Murray Bridge Shire",
+        "Murray Bridge Council"
+      ],
+      "Naracoorte Lucindale": [
+        "City of Naracoorte Lucindale",
+        "Naracoorte Lucindale City",
+        "Shire of Naracoorte Lucindale",
+        "Naracoorte Lucindale Shire",
+        "Naracoorte Lucindale Council",
+        "Naracoorte-Lucindale",
+        "Naracoorte"
+      ],
+      "Northern Areas": [
+        "City of Northern Areas",
+        "Northern Areas City",
+        "Shire of Northern Areas",
+        "Northern Areas Shire",
+        "Northern Areas Council"
+      ],
+      "Norwood Payneham and St Peters": [
+        "City of Norwood Payneham and St Peters",
+        "Norwood Payneham and St Peters City",
+        "Shire of Norwood Payneham and St Peters",
+        "Norwood Payneham and St Peters Shire",
+        "Norwood Payneham and St Peters Council",
+        "Norwood Payneham & St Peters",
+        "Norwood"
+      ],
+      "Onkaparinga": [
+        "City of Onkaparinga",
+        "Onkaparinga City",
+        "Shire of Onkaparinga",
+        "Onkaparinga Shire",
+        "Onkaparinga Council"
+      ],
+      "Orroroo Carrieton": [
+        "City of Orroroo Carrieton",
+        "Orroroo Carrieton City",
+        "Shire of Orroroo Carrieton",
+        "Orroroo Carrieton Shire",
+        "Orroroo Carrieton Council",
+        "Orroroo-Carrieton",
+        "Orroroo"
+      ],
+      "Peterborough": [
+        "City of Peterborough",
+        "Peterborough City",
+        "Shire of Peterborough",
+        "Peterborough Shire",
+        "Peterborough Council"
+      ],
+      "Playford": [
+        "City of Playford",
+        "Playford City",
+        "Shire of Playford",
+        "Playford Shire",
+        "Playford Council"
+      ],
+      "Port Adelaide Enfield": [
+        "City of Port Adelaide Enfield",
+        "Port Adelaide Enfield City",
+        "Shire of Port Adelaide Enfield",
+        "Port Adelaide Enfield Shire",
+        "Port Adelaide Enfield Council",
+        "Port Adelaide-Enfield",
+        "Port Adelaide"
+      ],
+      "Port Augusta": [
+        "City of Port Augusta",
+        "Port Augusta City",
+        "Shire of Port Augusta",
+        "Port Augusta Shire",
+        "Port Augusta Council"
+      ],
+      "Port Lincoln": [
+        "City of Port Lincoln",
+        "Port Lincoln City",
+        "Shire of Port Lincoln",
+        "Port Lincoln Shire",
+        "Port Lincoln Council"
+      ],
+      "Port Pirie": [
+        "City of Port Pirie",
+        "Port Pirie City",
+        "Shire of Port Pirie",
+        "Port Pirie Shire",
+        "Port Pirie Council",
+        "Port Pirie Regional"
+      ],
+      "Prospect": [
+        "City of Prospect",
+        "Prospect City",
+        "Shire of Prospect",
+        "Prospect Shire",
+        "Prospect Council"
+      ],
+      "Renmark Paringa": [
+        "City of Renmark Paringa",
+        "Renmark Paringa City",
+        "Shire of Renmark Paringa",
+        "Renmark Paringa Shire",
+        "Renmark Paringa Council",
+        "Renmark-Paringa",
+        "Renmark"
+      ],
+      "Robe": [
+        "City of Robe",
+        "Robe City",
+        "Shire of Robe",
+        "Robe Shire",
+        "Robe Council"
+      ],
+      "Roxby Downs": [
+        "City of Roxby Downs",
+        "Roxby Downs City",
+        "Shire of Roxby Downs",
+        "Roxby Downs Shire",
+        "Roxby Downs Council"
+      ],
+      "Salisbury": [
+        "City of Salisbury",
+        "Salisbury City",
+        "Shire of Salisbury",
+        "Salisbury Shire",
+        "Salisbury Council"
+      ],
+      "Southern Mallee": [
+        "City of Southern Mallee",
+        "Southern Mallee City",
+        "Shire of Southern Mallee",
+        "Southern Mallee Shire",
+        "Southern Mallee Council"
+      ],
+      "Streaky Bay": [
+        "City of Streaky Bay",
+        "Streaky Bay City",
+        "Shire of Streaky Bay",
+        "Streaky Bay Shire",
+        "Streaky Bay Council"
+      ],
+      "Tatiara": [
+        "City of Tatiara",
+        "Tatiara City",
+        "Shire of Tatiara",
+        "Tatiara Shire",
+        "Tatiara Council"
+      ],
+      "Tea Tree Gully": [
+        "City of Tea Tree Gully",
+        "Tea Tree Gully City",
+        "Shire of Tea Tree Gully",
+        "Tea Tree Gully Shire",
+        "Tea Tree Gully Council"
+      ],
+      "Coorong": [
+        "City of Coorong",
+        "Coorong City",
+        "Shire of Coorong",
+        "Coorong Shire",
+        "Coorong Council"
+      ],
+      "Tumby Bay": [
+        "City of Tumby Bay",
+        "Tumby Bay City",
+        "Shire of Tumby Bay",
+        "Tumby Bay Shire",
+        "Tumby Bay Council"
+      ],
+      "Unley": [
+        "City of Unley",
+        "Unley City",
+        "Shire of Unley",
+        "Unley Shire",
+        "Unley Council"
+      ],
+      "Victor Harbor": [
+        "City of Victor Harbor",
+        "Victor Harbor City",
+        "Shire of Victor Harbor",
+        "Victor Harbor Shire",
+        "Victor Harbor Council",
+        "Victor Harbour"
+      ],
+      "Wakefield": [
+        "City of Wakefield",
+        "Wakefield City",
+        "Shire of Wakefield",
+        "Wakefield Shire",
+        "Wakefield Council"
+      ],
+      "Walkerville": [
+        "City of Walkerville",
+        "Walkerville City",
+        "Shire of Walkerville",
+        "Walkerville Shire",
+        "Walkerville Council"
+      ],
+      "Wattle Range": [
+        "City of Wattle Range",
+        "Wattle Range City",
+        "Shire of Wattle Range",
+        "Wattle Range Shire",
+        "Wattle Range Council"
+      ],
+      "West Torrens": [
+        "City of West Torrens",
+        "West Torrens City",
+        "Shire of West Torrens",
+        "West Torrens Shire",
+        "West Torrens Council"
+      ],
+      "Whyalla": [
+        "City of Whyalla",
+        "Whyalla City",
+        "Shire of Whyalla",
+        "Whyalla Shire",
+        "Whyalla Council"
+      ],
+      "Wudinna": [
+        "City of Wudinna",
+        "Wudinna City",
+        "Shire of Wudinna",
+        "Wudinna Shire",
+        "Wudinna Council"
+      ],
+      "Yankalilla": [
+        "City of Yankalilla",
+        "Yankalilla City",
+        "Shire of Yankalilla",
+        "Yankalilla Shire",
+        "Yankalilla Council"
+      ],
+      "Yorke Peninsula": [
+        "City of Yorke Peninsula",
+        "Yorke Peninsula City",
+        "Shire of Yorke Peninsula",
+        "Yorke Peninsula Shire",
+        "Yorke Peninsula Council"
+      ]
+    },
+    "defaultCenter": [
+      -32,
+      136.5
+    ],
+    "defaultZoom": 6,
+    "totalItems": 70,
+    "tags": [
+      "AUS",
+      "AU-SA",
+      "2nd-level-divisions",
+      "aus-lga"
+    ]
+  },
+  {
+    "id": "aus-lga-tas",
+    "title": "Tasmania: Local Government Areas (29)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/aus-lga/tas.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Break O'Day": [
+        "Break ODay",
+        "City of Break O'Day",
+        "Break O'Day City",
+        "Shire of Break O'Day",
+        "Break O'Day Shire",
+        "Break O'Day Council",
+        "Break O Day"
+      ],
+      "Brighton": [
+        "City of Brighton",
+        "Brighton City",
+        "Shire of Brighton",
+        "Brighton Shire",
+        "Brighton Council"
+      ],
+      "Burnie": [
+        "City of Burnie",
+        "Burnie City",
+        "Shire of Burnie",
+        "Burnie Shire",
+        "Burnie Council"
+      ],
+      "Central Coast": [
+        "Central Coast (Tas.)",
+        "Central Coast (Tas)",
+        "City of Central Coast",
+        "Central Coast City",
+        "Shire of Central Coast",
+        "Central Coast Shire",
+        "Central Coast Council"
+      ],
+      "Central Highlands": [
+        "Central Highlands (Tas.)",
+        "Central Highlands (Tas)",
+        "City of Central Highlands",
+        "Central Highlands City",
+        "Shire of Central Highlands",
+        "Central Highlands Shire",
+        "Central Highlands Council"
+      ],
+      "Circular Head": [
+        "City of Circular Head",
+        "Circular Head City",
+        "Shire of Circular Head",
+        "Circular Head Shire",
+        "Circular Head Council"
+      ],
+      "Clarence": [
+        "City of Clarence",
+        "Clarence City",
+        "Shire of Clarence",
+        "Clarence Shire",
+        "Clarence Council"
+      ],
+      "Derwent Valley": [
+        "City of Derwent Valley",
+        "Derwent Valley City",
+        "Shire of Derwent Valley",
+        "Derwent Valley Shire",
+        "Derwent Valley Council"
+      ],
+      "Devonport": [
+        "City of Devonport",
+        "Devonport City",
+        "Shire of Devonport",
+        "Devonport Shire",
+        "Devonport Council"
+      ],
+      "Dorset": [
+        "City of Dorset",
+        "Dorset City",
+        "Shire of Dorset",
+        "Dorset Shire",
+        "Dorset Council"
+      ],
+      "Flinders": [
+        "Flinders (Tas.)",
+        "Flinders (Tas)",
+        "City of Flinders",
+        "Flinders City",
+        "Shire of Flinders",
+        "Flinders Shire",
+        "Flinders Council"
+      ],
+      "George Town": [
+        "City of George Town",
+        "George Town City",
+        "Shire of George Town",
+        "George Town Shire",
+        "George Town Council"
+      ],
+      "Glamorgan-Spring Bay": [
+        "Glamorgan Spring Bay",
+        "City of Glamorgan-Spring Bay",
+        "Glamorgan-Spring Bay City",
+        "Shire of Glamorgan-Spring Bay",
+        "Glamorgan-Spring Bay Shire",
+        "Glamorgan-Spring Bay Council",
+        "Spring Bay"
+      ],
+      "Glenorchy": [
+        "City of Glenorchy",
+        "Glenorchy City",
+        "Shire of Glenorchy",
+        "Glenorchy Shire",
+        "Glenorchy Council"
+      ],
+      "Hobart": [
+        "City of Hobart",
+        "Hobart City",
+        "Shire of Hobart",
+        "Hobart Shire",
+        "Hobart Council"
+      ],
+      "Huon Valley": [
+        "City of Huon Valley",
+        "Huon Valley City",
+        "Shire of Huon Valley",
+        "Huon Valley Shire",
+        "Huon Valley Council"
+      ],
+      "Kentish": [
+        "City of Kentish",
+        "Kentish City",
+        "Shire of Kentish",
+        "Kentish Shire",
+        "Kentish Council"
+      ],
+      "King Island": [
+        "City of King Island",
+        "King Island City",
+        "Shire of King Island",
+        "King Island Shire",
+        "King Island Council"
+      ],
+      "Kingborough": [
+        "City of Kingborough",
+        "Kingborough City",
+        "Shire of Kingborough",
+        "Kingborough Shire",
+        "Kingborough Council"
+      ],
+      "Latrobe": [
+        "Latrobe (Tas.)",
+        "Latrobe (Tas)",
+        "City of Latrobe",
+        "Latrobe City",
+        "Shire of Latrobe",
+        "Latrobe Shire",
+        "Latrobe Council"
+      ],
+      "Launceston": [
+        "City of Launceston",
+        "Launceston City",
+        "Shire of Launceston",
+        "Launceston Shire",
+        "Launceston Council"
+      ],
+      "Meander Valley": [
+        "City of Meander Valley",
+        "Meander Valley City",
+        "Shire of Meander Valley",
+        "Meander Valley Shire",
+        "Meander Valley Council"
+      ],
+      "Northern Midlands": [
+        "City of Northern Midlands",
+        "Northern Midlands City",
+        "Shire of Northern Midlands",
+        "Northern Midlands Shire",
+        "Northern Midlands Council"
+      ],
+      "Sorell": [
+        "City of Sorell",
+        "Sorell City",
+        "Shire of Sorell",
+        "Sorell Shire",
+        "Sorell Council"
+      ],
+      "Southern Midlands": [
+        "City of Southern Midlands",
+        "Southern Midlands City",
+        "Shire of Southern Midlands",
+        "Southern Midlands Shire",
+        "Southern Midlands Council"
+      ],
+      "Tasman": [
+        "City of Tasman",
+        "Tasman City",
+        "Shire of Tasman",
+        "Tasman Shire",
+        "Tasman Council"
+      ],
+      "Waratah-Wynyard": [
+        "Waratah Wynyard",
+        "City of Waratah-Wynyard",
+        "Waratah-Wynyard City",
+        "Shire of Waratah-Wynyard",
+        "Waratah-Wynyard Shire",
+        "Waratah-Wynyard Council",
+        "Wynyard"
+      ],
+      "West Coast": [
+        "City of West Coast",
+        "West Coast City",
+        "Shire of West Coast",
+        "West Coast Shire",
+        "West Coast Council"
+      ],
+      "West Tamar": [
+        "City of West Tamar",
+        "West Tamar City",
+        "Shire of West Tamar",
+        "West Tamar Shire",
+        "West Tamar Council"
+      ]
+    },
+    "defaultCenter": [
+      -42,
+      146.5
+    ],
+    "defaultZoom": 7,
+    "totalItems": 29,
+    "tags": [
+      "AUS",
+      "AU-TAS",
+      "2nd-level-divisions",
+      "aus-lga"
+    ]
+  },
+  {
+    "id": "aus-lga-nt",
+    "title": "Northern Territory: Local Government Areas (19)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/aus-lga/nt.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Alice Springs": [
+        "City of Alice Springs",
+        "Alice Springs City",
+        "Shire of Alice Springs",
+        "Alice Springs Shire",
+        "Alice Springs Council"
+      ],
+      "Barkly": [
+        "City of Barkly",
+        "Barkly City",
+        "Shire of Barkly",
+        "Barkly Shire",
+        "Barkly Council"
+      ],
+      "Belyuen": [
+        "City of Belyuen",
+        "Belyuen City",
+        "Shire of Belyuen",
+        "Belyuen Shire",
+        "Belyuen Council"
+      ],
+      "Central Desert": [
+        "City of Central Desert",
+        "Central Desert City",
+        "Shire of Central Desert",
+        "Central Desert Shire",
+        "Central Desert Council"
+      ],
+      "Coomalie": [
+        "City of Coomalie",
+        "Coomalie City",
+        "Shire of Coomalie",
+        "Coomalie Shire",
+        "Coomalie Council"
+      ],
+      "Darwin": [
+        "City of Darwin",
+        "Darwin City",
+        "Shire of Darwin",
+        "Darwin Shire",
+        "Darwin Council"
+      ],
+      "Darwin Waterfront Precinct": [
+        "City of Darwin Waterfront Precinct",
+        "Darwin Waterfront Precinct City",
+        "Shire of Darwin Waterfront Precinct",
+        "Darwin Waterfront Precinct Shire",
+        "Darwin Waterfront Precinct Council",
+        "Darwin Waterfront"
+      ],
+      "East Arnhem": [
+        "City of East Arnhem",
+        "East Arnhem City",
+        "Shire of East Arnhem",
+        "East Arnhem Shire",
+        "East Arnhem Council"
+      ],
+      "Groote Archipelago": [
+        "City of Groote Archipelago",
+        "Groote Archipelago City",
+        "Shire of Groote Archipelago",
+        "Groote Archipelago Shire",
+        "Groote Archipelago Council",
+        "Groote Eylandt"
+      ],
+      "Katherine": [
+        "City of Katherine",
+        "Katherine City",
+        "Shire of Katherine",
+        "Katherine Shire",
+        "Katherine Council"
+      ],
+      "Litchfield": [
+        "City of Litchfield",
+        "Litchfield City",
+        "Shire of Litchfield",
+        "Litchfield Shire",
+        "Litchfield Council"
+      ],
+      "MacDonnell": [
+        "City of MacDonnell",
+        "MacDonnell City",
+        "Shire of MacDonnell",
+        "MacDonnell Shire",
+        "MacDonnell Council",
+        "MacDonnell Region"
+      ],
+      "Palmerston": [
+        "City of Palmerston",
+        "Palmerston City",
+        "Shire of Palmerston",
+        "Palmerston Shire",
+        "Palmerston Council"
+      ],
+      "Roper Gulf": [
+        "City of Roper Gulf",
+        "Roper Gulf City",
+        "Shire of Roper Gulf",
+        "Roper Gulf Shire",
+        "Roper Gulf Council"
+      ],
+      "Tiwi Islands": [
+        "City of Tiwi Islands",
+        "Tiwi Islands City",
+        "Shire of Tiwi Islands",
+        "Tiwi Islands Shire",
+        "Tiwi Islands Council"
+      ],
+      "Victoria Daly": [
+        "City of Victoria Daly",
+        "Victoria Daly City",
+        "Shire of Victoria Daly",
+        "Victoria Daly Shire",
+        "Victoria Daly Council",
+        "Victoria-Daly"
+      ],
+      "Wagait": [
+        "City of Wagait",
+        "Wagait City",
+        "Shire of Wagait",
+        "Wagait Shire",
+        "Wagait Council"
+      ],
+      "West Arnhem": [
+        "City of West Arnhem",
+        "West Arnhem City",
+        "Shire of West Arnhem",
+        "West Arnhem Shire",
+        "West Arnhem Council"
+      ],
+      "West Daly": [
+        "City of West Daly",
+        "West Daly City",
+        "Shire of West Daly",
+        "West Daly Shire",
+        "West Daly Council"
+      ]
+    },
+    "defaultCenter": [
+      -19.5,
+      133.5
+    ],
+    "defaultZoom": 5,
+    "totalItems": 19,
+    "tags": [
+      "AUS",
+      "AU-NT",
+      "2nd-level-divisions",
+      "aus-lga"
+    ]
+  }
+]

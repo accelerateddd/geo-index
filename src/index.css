@@ -1,0 +1,35 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+@layer base {
+  body {
+    @apply bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500 selection:text-white;
+    margin: 0;
+  }
+}
+
+/* Custom Leaflet dark theme overrides */
+.leaflet-container {
+  background-color: #0b1120 !important;
+  font-family: inherit;
+}
+
+.leaflet-control-attribution {
+  background: rgba(15, 23, 42, 0.75) !important;
+  color: #64748b !important;
+  font-size: 10px !important;
+}
+
+.leaflet-control-attribution a {
+  color: #94a3b8 !important;
+}
+
+.region-tooltip {
+  background-color: rgba(15, 23, 42, 0.95) !important;
+  border: 1px solid rgba(99, 102, 241, 0.5) !important;
+  color: #f8fafc !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+  padding: 4px 8px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+}

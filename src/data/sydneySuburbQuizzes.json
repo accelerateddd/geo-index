@@ -1,0 +1,870 @@
+[
+  {
+    "id": "syd-suburbs-sydney",
+    "title": "Sydney Suburbs: Sydney (33)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/sydney.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "St Peters": [
+        "Saint Peters"
+      ],
+      "Sydney": [
+        "Sydney CBD",
+        "CBD",
+        "City"
+      ]
+    },
+    "defaultCenter": [
+      -33.889,
+      151.204
+    ],
+    "defaultZoom": 12,
+    "totalItems": 33,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-bayside",
+    "title": "Sydney Suburbs: Bayside (29)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/bayside.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Brighton-Le-Sands": [
+        "Brighton Le Sands",
+        "BrightonLeSands"
+      ]
+    },
+    "defaultCenter": [
+      -33.9647,
+      151.1662
+    ],
+    "defaultZoom": 12,
+    "totalItems": 29,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-inner-west",
+    "title": "Sydney Suburbs: Inner West (25)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/inner-west.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "St Peters": [
+        "Saint Peters"
+      ]
+    },
+    "defaultCenter": [
+      -33.8899,
+      151.1544
+    ],
+    "defaultZoom": 12,
+    "totalItems": 25,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-randwick",
+    "title": "Sydney Suburbs: Randwick (15)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/randwick.geojson",
+    "nameProperty": "name",
+    "defaultCenter": [
+      -33.9455,
+      151.2396
+    ],
+    "defaultZoom": 12,
+    "totalItems": 15,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-waverley",
+    "title": "Sydney Suburbs: Waverley (11)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/waverley.geojson",
+    "nameProperty": "name",
+    "defaultCenter": [
+      -33.8841,
+      151.2635
+    ],
+    "defaultZoom": 13,
+    "totalItems": 11,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-woollahra",
+    "title": "Sydney Suburbs: Woollahra (10)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/woollahra.geojson",
+    "nameProperty": "name",
+    "defaultCenter": [
+      -33.8619,
+      151.2535
+    ],
+    "defaultZoom": 12,
+    "totalItems": 10,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-north-sydney",
+    "title": "Sydney Suburbs: North Sydney (14)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/north-sydney.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "St Leonards": [
+        "Saint Leonards"
+      ]
+    },
+    "defaultCenter": [
+      -33.8342,
+      151.2102
+    ],
+    "defaultZoom": 13,
+    "totalItems": 14,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-mosman",
+    "title": "Sydney Suburbs: Mosman (1)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/mosman.geojson",
+    "nameProperty": "name",
+    "defaultCenter": [
+      -33.8283,
+      151.2486
+    ],
+    "defaultZoom": 13,
+    "totalItems": 1,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-willoughby",
+    "title": "Sydney Suburbs: Willoughby (14)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/willoughby.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "St Leonards": [
+        "Saint Leonards"
+      ]
+    },
+    "defaultCenter": [
+      -33.8017,
+      151.1882
+    ],
+    "defaultZoom": 12,
+    "totalItems": 14,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-lane-cove",
+    "title": "Sydney Suburbs: Lane Cove (9)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/lane-cove.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "St Leonards": [
+        "Saint Leonards"
+      ]
+    },
+    "defaultCenter": [
+      -33.8232,
+      151.1702
+    ],
+    "defaultZoom": 13,
+    "totalItems": 9,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-ku-ring-gai",
+    "title": "Sydney Suburbs: Ku-ring-gai (17)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/ku-ring-gai.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "St Ives": [
+        "Saint Ives"
+      ],
+      "St Ives Chase": [
+        "Saint Ives Chase"
+      ]
+    },
+    "defaultCenter": [
+      -33.7272,
+      151.1486
+    ],
+    "defaultZoom": 12,
+    "totalItems": 17,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-northern-beaches",
+    "title": "Sydney Suburbs: Northern Beaches (55)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/northern-beaches.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Ku-ring-gai Chase": [
+        "Ku ring gai Chase",
+        "Kuringgai Chase"
+      ]
+    },
+    "defaultCenter": [
+      -33.6978,
+      151.2522
+    ],
+    "defaultZoom": 11,
+    "totalItems": 55,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-hornsby",
+    "title": "Sydney Suburbs: Hornsby (38)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/hornsby.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Mount Colah": [
+        "Mt Colah"
+      ],
+      "Mount Kuring-gai": [
+        "Mount Kuring gai",
+        "Mount Kuringgai",
+        "Mt Kuring-gai"
+      ]
+    },
+    "defaultCenter": [
+      -33.5723,
+      151.1284
+    ],
+    "defaultZoom": 10,
+    "totalItems": 38,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-ryde",
+    "title": "Sydney Suburbs: Ryde (16)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/ryde.geojson",
+    "nameProperty": "name",
+    "defaultCenter": [
+      -33.8014,
+      151.1119
+    ],
+    "defaultZoom": 12,
+    "totalItems": 16,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-hunters-hill",
+    "title": "Sydney Suburbs: Hunters Hill (6)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/hunters-hill.geojson",
+    "nameProperty": "name",
+    "defaultCenter": [
+      -33.8298,
+      151.1535
+    ],
+    "defaultZoom": 13,
+    "totalItems": 6,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-parramatta",
+    "title": "Sydney Suburbs: Parramatta (35)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/parramatta.geojson",
+    "nameProperty": "name",
+    "defaultCenter": [
+      -33.807,
+      151.0229
+    ],
+    "defaultZoom": 11,
+    "totalItems": 35,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-canada-bay",
+    "title": "Sydney Suburbs: Canada Bay (17)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/canada-bay.geojson",
+    "nameProperty": "name",
+    "defaultCenter": [
+      -33.8485,
+      151.1214
+    ],
+    "defaultZoom": 12,
+    "totalItems": 17,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-burwood",
+    "title": "Sydney Suburbs: Burwood (6)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/burwood.geojson",
+    "nameProperty": "name",
+    "defaultCenter": [
+      -33.8853,
+      151.1048
+    ],
+    "defaultZoom": 13,
+    "totalItems": 6,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-strathfield",
+    "title": "Sydney Suburbs: Strathfield (5)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/strathfield.geojson",
+    "nameProperty": "name",
+    "defaultCenter": [
+      -33.8798,
+      151.0758
+    ],
+    "defaultZoom": 13,
+    "totalItems": 5,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-canterbury-bankstown",
+    "title": "Sydney Suburbs: Canterbury-Bankstown (41)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/canterbury-bankstown.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Mount Lewis": [
+        "Mt Lewis"
+      ]
+    },
+    "defaultCenter": [
+      -33.9239,
+      151.0607
+    ],
+    "defaultZoom": 11,
+    "totalItems": 41,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-georges-river",
+    "title": "Sydney Suburbs: Georges River (24)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/georges-river.geojson",
+    "nameProperty": "name",
+    "defaultCenter": [
+      -33.9733,
+      151.0855
+    ],
+    "defaultZoom": 12,
+    "totalItems": 24,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-sutherland",
+    "title": "Sydney Suburbs: Sutherland (56)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/sutherland.geojson",
+    "nameProperty": "name",
+    "defaultCenter": [
+      -34.0718,
+      151.0772
+    ],
+    "defaultZoom": 10,
+    "totalItems": 56,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-cumberland",
+    "title": "Sydney Suburbs: Cumberland (25)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/cumberland.geojson",
+    "nameProperty": "name",
+    "defaultCenter": [
+      -33.8368,
+      150.9915
+    ],
+    "defaultZoom": 11,
+    "totalItems": 25,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-fairfield",
+    "title": "Sydney Suburbs: Fairfield (27)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/fairfield.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Mount Pritchard": [
+        "Mt Pritchard"
+      ],
+      "St Johns Park": [
+        "Saint Johns Park"
+      ]
+    },
+    "defaultCenter": [
+      -33.8675,
+      150.9011
+    ],
+    "defaultZoom": 11,
+    "totalItems": 27,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-liverpool",
+    "title": "Sydney Suburbs: Liverpool (42)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/liverpool.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Mount Pritchard": [
+        "Mt Pritchard"
+      ]
+    },
+    "defaultCenter": [
+      -33.9525,
+      150.8059
+    ],
+    "defaultZoom": 10,
+    "totalItems": 42,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-campbelltown",
+    "title": "Sydney Suburbs: Campbelltown (38)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/campbelltown.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Mount Annan": [
+        "Mt Annan"
+      ],
+      "St Andrews": [
+        "Saint Andrews"
+      ],
+      "St Helens Park": [
+        "Saint Helens Park"
+      ]
+    },
+    "defaultCenter": [
+      -34.0739,
+      150.839
+    ],
+    "defaultZoom": 11,
+    "totalItems": 38,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-camden",
+    "title": "Sydney Suburbs: Camden (24)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/camden.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Mount Annan": [
+        "Mt Annan"
+      ]
+    },
+    "defaultCenter": [
+      -34.0161,
+      150.7252
+    ],
+    "defaultZoom": 11,
+    "totalItems": 24,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-penrith",
+    "title": "Sydney Suburbs: Penrith (36)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/penrith.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Mount Vernon": [
+        "Mt Vernon"
+      ],
+      "North St Marys": [
+        "North Saint Marys"
+      ],
+      "St Clair": [
+        "Saint Clair"
+      ],
+      "St Marys": [
+        "Saint Marys"
+      ]
+    },
+    "defaultCenter": [
+      -33.7477,
+      150.706
+    ],
+    "defaultZoom": 11,
+    "totalItems": 36,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-blacktown",
+    "title": "Sydney Suburbs: Blacktown (54)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/blacktown.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Mount Druitt": [
+        "Mt Druitt"
+      ],
+      "St Marys": [
+        "Saint Marys"
+      ]
+    },
+    "defaultCenter": [
+      -33.7402,
+      150.8625
+    ],
+    "defaultZoom": 11,
+    "totalItems": 54,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-the-hills",
+    "title": "Sydney Suburbs: The Hills (28)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/the-hills.geojson",
+    "nameProperty": "name",
+    "defaultCenter": [
+      -33.5756,
+      150.9597
+    ],
+    "defaultZoom": 10,
+    "totalItems": 28,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-hawkesbury",
+    "title": "Sydney Suburbs: Hawkesbury (64)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/hawkesbury.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "St Albans": [
+        "Saint Albans"
+      ]
+    },
+    "defaultCenter": [
+      -33.3408,
+      150.7831
+    ],
+    "defaultZoom": 10,
+    "totalItems": 64,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-blue-mountains",
+    "title": "Sydney Suburbs: Blue Mountains (31)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/blue-mountains.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Mount Irvine": [
+        "Mt Irvine"
+      ],
+      "Mount Riverview": [
+        "Mt Riverview"
+      ],
+      "Mount Tomah": [
+        "Mt Tomah"
+      ],
+      "Mount Victoria": [
+        "Mt Victoria"
+      ],
+      "Mount Wilson": [
+        "Mt Wilson"
+      ]
+    },
+    "defaultCenter": [
+      -33.632,
+      150.4129
+    ],
+    "defaultZoom": 10,
+    "totalItems": 31,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-central-coast",
+    "title": "Sydney Suburbs: Central Coast (154)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/central-coast.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Mount Elliot": [
+        "Mt Elliot"
+      ],
+      "Mount White": [
+        "Mt White"
+      ],
+      "St Huberts Island": [
+        "Saint Huberts Island"
+      ]
+    },
+    "defaultCenter": [
+      -33.3117,
+      151.3078
+    ],
+    "defaultZoom": 10,
+    "totalItems": 154,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  },
+  {
+    "id": "syd-suburbs-wollondilly",
+    "title": "Sydney Suburbs: Wollondilly (41)",
+    "category": "niche-subdivisions",
+    "format": "map-polygon",
+    "countryOrRegion": "Australia",
+    "geoJsonUrl": "/data/sydney-suburbs/wollondilly.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Mount Hunter": [
+        "Mt Hunter"
+      ]
+    },
+    "defaultCenter": [
+      -34.0696,
+      150.4627
+    ],
+    "defaultZoom": 10,
+    "totalItems": 41,
+    "tags": [
+      "AUS",
+      "AU-NSW",
+      "sydney-suburbs",
+      "3rd-level-divisions"
+    ]
+  }
+]

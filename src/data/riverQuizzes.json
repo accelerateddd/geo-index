@@ -1,0 +1,459 @@
+[
+  {
+    "id": "rivers-europe",
+    "title": "Europe: Major Rivers (18)",
+    "category": "landscapes",
+    "format": "map-polygon",
+    "countryOrRegion": "Europe",
+    "geoJsonUrl": "/data/rivers/europe.geojson",
+    "backgroundGeoJsonUrl": "/data/world-countries.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Volga": [
+        "Volga River"
+      ],
+      "Danube": [
+        "Danube River",
+        "Donau"
+      ],
+      "Ural": [
+        "Ural River"
+      ],
+      "Dnieper": [
+        "Dnipro",
+        "Dnieper River"
+      ],
+      "Don": [
+        "Don River"
+      ],
+      "Pechora": [
+        "Pechora River"
+      ],
+      "Kama": [
+        "Kama River"
+      ],
+      "Oka": [
+        "Oka River"
+      ],
+      "Rhine": [
+        "Rhine River",
+        "Rhein"
+      ],
+      "Elbe": [
+        "Elbe River",
+        "Labe"
+      ],
+      "Vistula": [
+        "Vistula River",
+        "Wisla"
+      ],
+      "Tagus": [
+        "Tajo",
+        "Tejo",
+        "Tagus River"
+      ],
+      "Daugava": [
+        "Western Dvina",
+        "Daugava River"
+      ],
+      "Loire": [
+        "Loire River"
+      ],
+      "Rhône": [
+        "Rhone",
+        "Rhone River"
+      ],
+      "Seine": [
+        "Seine River"
+      ],
+      "Po": [
+        "Po River"
+      ],
+      "Ebro": [
+        "Ebro River"
+      ]
+    },
+    "defaultCenter": [
+      51,
+      20
+    ],
+    "defaultZoom": 4,
+    "totalItems": 18,
+    "tags": [
+      "RIVERS",
+      "EUROPE",
+      "landscapes"
+    ]
+  },
+  {
+    "id": "rivers-asia",
+    "title": "Asia: Major Rivers (17)",
+    "category": "landscapes",
+    "format": "map-polygon",
+    "countryOrRegion": "Asia",
+    "geoJsonUrl": "/data/rivers/asia.geojson",
+    "backgroundGeoJsonUrl": "/data/world-countries.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Yangtze": [
+        "Chang Jiang",
+        "Yangtze River"
+      ],
+      "Yellow": [
+        "Yellow River",
+        "Huang He"
+      ],
+      "Mekong": [
+        "Mekong River"
+      ],
+      "Lena": [
+        "Lena River"
+      ],
+      "Irtysh": [
+        "Irtysh River"
+      ],
+      "Yenisey": [
+        "Yenisei",
+        "Yenisey River"
+      ],
+      "Ob": [
+        "Ob River"
+      ],
+      "Indus": [
+        "Indus River"
+      ],
+      "Brahmaputra": [
+        "Brahmaputra River",
+        "Tsangpo"
+      ],
+      "Ganges": [
+        "Ganga",
+        "Ganges River"
+      ],
+      "Amur": [
+        "Amur River",
+        "Heilong Jiang"
+      ],
+      "Euphrates": [
+        "Euphrates River"
+      ],
+      "Tigris": [
+        "Tigris River"
+      ],
+      "Salween": [
+        "Salween River",
+        "Nu River"
+      ],
+      "Irrawaddy": [
+        "Ayeyarwady",
+        "Irrawaddy River"
+      ],
+      "Syr Darya": [
+        "Syrdarya",
+        "Syr Darya River"
+      ],
+      "Amu Darya": [
+        "Amudarya",
+        "Amu Darya River",
+        "Oxus"
+      ]
+    },
+    "defaultCenter": [
+      34,
+      92
+    ],
+    "defaultZoom": 3,
+    "totalItems": 17,
+    "tags": [
+      "RIVERS",
+      "ASIA",
+      "landscapes"
+    ]
+  },
+  {
+    "id": "rivers-africa",
+    "title": "Africa: Major Rivers (15)",
+    "category": "landscapes",
+    "format": "map-polygon",
+    "countryOrRegion": "Africa",
+    "geoJsonUrl": "/data/rivers/africa.geojson",
+    "backgroundGeoJsonUrl": "/data/world-countries.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Nile": [
+        "Nile River"
+      ],
+      "Congo": [
+        "Congo River",
+        "Zaire River"
+      ],
+      "Niger": [
+        "Niger River"
+      ],
+      "Zambezi": [
+        "Zambezi River"
+      ],
+      "Orange": [
+        "Orange River"
+      ],
+      "Limpopo": [
+        "Limpopo River"
+      ],
+      "Senegal": [
+        "Sénégal",
+        "Senegal River"
+      ],
+      "Volta": [
+        "Volta River"
+      ],
+      "Benue": [
+        "Benue River"
+      ],
+      "Ogooué": [
+        "Ogooue",
+        "Ogooue River"
+      ],
+      "Shebelle": [
+        "Shabelle",
+        "Shabeelle",
+        "Shebelle River"
+      ],
+      "Juba": [
+        "Jubba",
+        "Juba River"
+      ],
+      "Kasai": [
+        "Kasai River"
+      ],
+      "Ubangi": [
+        "Oubangui",
+        "Ubangi River"
+      ],
+      "Okavango": [
+        "Cubango",
+        "Okavango River"
+      ]
+    },
+    "defaultCenter": [
+      2,
+      21
+    ],
+    "defaultZoom": 3,
+    "totalItems": 15,
+    "tags": [
+      "RIVERS",
+      "AFRICA",
+      "landscapes"
+    ]
+  },
+  {
+    "id": "rivers-north-america",
+    "title": "North America: Major Rivers (15)",
+    "category": "landscapes",
+    "format": "map-polygon",
+    "countryOrRegion": "North America",
+    "geoJsonUrl": "/data/rivers/north-america.geojson",
+    "backgroundGeoJsonUrl": "/data/world-countries.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Mississippi": [
+        "Mississippi River"
+      ],
+      "Missouri": [
+        "Missouri River"
+      ],
+      "Mackenzie": [
+        "Mackenzie River"
+      ],
+      "Yukon": [
+        "Yukon River"
+      ],
+      "Rio Grande": [
+        "Rio Bravo",
+        "Rio Grande River"
+      ],
+      "St. Lawrence": [
+        "Saint Lawrence",
+        "St Lawrence",
+        "St. Lawrence River"
+      ],
+      "Colorado": [
+        "Colorado River"
+      ],
+      "Columbia": [
+        "Columbia River"
+      ],
+      "Saskatchewan": [
+        "Saskatchewan River"
+      ],
+      "Peace": [
+        "Peace River"
+      ],
+      "Ottawa": [
+        "Ottawa River"
+      ],
+      "Ohio": [
+        "Ohio River"
+      ],
+      "Arkansas": [
+        "Arkansas River"
+      ],
+      "Red": [
+        "Red River",
+        "Red River of the South"
+      ],
+      "Snake": [
+        "Snake River"
+      ]
+    },
+    "defaultCenter": [
+      45,
+      -100
+    ],
+    "defaultZoom": 3,
+    "totalItems": 15,
+    "tags": [
+      "RIVERS",
+      "NORTH-AMERICA",
+      "landscapes"
+    ]
+  },
+  {
+    "id": "rivers-south-america",
+    "title": "South America: Major Rivers (15)",
+    "category": "landscapes",
+    "format": "map-polygon",
+    "countryOrRegion": "South America",
+    "geoJsonUrl": "/data/rivers/south-america.geojson",
+    "backgroundGeoJsonUrl": "/data/world-countries.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Amazon": [
+        "Amazonas",
+        "Amazon River"
+      ],
+      "Paraná": [
+        "Parana",
+        "Parana River"
+      ],
+      "Madeira": [
+        "Madeira River"
+      ],
+      "Purus": [
+        "Purús",
+        "Purus River"
+      ],
+      "São Francisco": [
+        "Sao Francisco",
+        "Sao Francisco River"
+      ],
+      "Tocantins": [
+        "Tocantins River"
+      ],
+      "Orinoco": [
+        "Orinoco River"
+      ],
+      "Paraguay": [
+        "Paraguay River"
+      ],
+      "Juruá": [
+        "Jurua",
+        "Jurua River"
+      ],
+      "Negro": [
+        "Rio Negro",
+        "Negro River"
+      ],
+      "Xingu": [
+        "Xingu River"
+      ],
+      "Tapajós": [
+        "Tapajos",
+        "Tapajos River"
+      ],
+      "Magdalena": [
+        "Magdalena River"
+      ],
+      "Uruguay": [
+        "Uruguay River"
+      ],
+      "Pilcomayo": [
+        "Pilcomayo River"
+      ]
+    },
+    "defaultCenter": [
+      -16,
+      -60
+    ],
+    "defaultZoom": 3,
+    "totalItems": 15,
+    "tags": [
+      "RIVERS",
+      "SOUTH-AMERICA",
+      "landscapes"
+    ]
+  },
+  {
+    "id": "rivers-oceania",
+    "title": "Oceania: Major Rivers (13)",
+    "category": "landscapes",
+    "format": "map-polygon",
+    "countryOrRegion": "Oceania",
+    "geoJsonUrl": "/data/rivers/oceania.geojson",
+    "backgroundGeoJsonUrl": "/data/world-countries.geojson",
+    "nameProperty": "name",
+    "aliases": {
+      "Murray": [
+        "Murray River"
+      ],
+      "Darling": [
+        "Darling River"
+      ],
+      "Murrumbidgee": [
+        "Murrumbidgee River"
+      ],
+      "Lachlan": [
+        "Lachlan River"
+      ],
+      "Cooper Creek": [
+        "Cooper",
+        "Barcoo"
+      ],
+      "Flinders": [
+        "Flinders River"
+      ],
+      "Diamantina": [
+        "Diamantina River"
+      ],
+      "Victoria": [
+        "Victoria River"
+      ],
+      "Fitzroy": [
+        "Fitzroy River"
+      ],
+      "Waikato": [
+        "Waikato River"
+      ],
+      "Clutha": [
+        "Clutha River"
+      ],
+      "Fly": [
+        "Fly River"
+      ],
+      "Sepik": [
+        "Sepik River"
+      ]
+    },
+    "defaultCenter": [
+      -25,
+      142
+    ],
+    "defaultZoom": 4,
+    "totalItems": 13,
+    "tags": [
+      "RIVERS",
+      "OCEANIA",
+      "landscapes"
+    ]
+  }
+]
