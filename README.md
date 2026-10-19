@@ -1,32 +1,37 @@
-# React + TypeScript + Vite
+# Geo Index
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A geography practice app built with React, TypeScript, Vite and Tailwind CSS. It
+covers world countries, first- and second-level divisions, US counties, Australian
+LGAs, Sydney suburbs, cities, rivers and flags, with a spaced revision queue that
+rotates the quizzes you most need to revisit.
 
-Currently, two official plugins are available:
+## Running locally
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+```bash
+npm run build     # typecheck + production build
+npm run lint      # oxlint
+npm run preview   # preview the production build
+```
+
+## Main areas
+
+- **Revision** — an automatically ordered queue of enrolled quizzes. Stats are
+  recomputed from local attempt history; quizzes return when they are due again.
+- **Library** — browse, search and filter the full catalogue. The list is
+  paginated at 50 quizzes per page; the map view shows quizzes by country.
+- **Create** — import a GeoJSON `FeatureCollection` as a quiz, and back up or
+  sync progress with a JSON file or sync code.
+
+## Data
+
+Built-in quiz definitions live in `src/data/` and GeoJSON/flag assets live in
+`public/data/`. Where data includes a `(count)` suffix in its title, the UI strips
+it and shows the count separately.
+
+Progress, enrolled quizzes and custom quiz metadata are stored in `localStorage`;
+custom GeoJSON is stored in IndexedDB.

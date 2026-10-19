@@ -1,40 +1,66 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 import {
-  FileUp,
-  PlusCircle,
-  CheckCircle2,
   AlertTriangle,
-  Trash2,
-  Download,
-  Upload,
-  Copy,
+  CheckCircle2,
   ClipboardPaste,
+  Copy,
+  Download,
+  FileUp,
+  Plus,
+  Trash2,
+  Upload,
 } from 'lucide-react';
-import type { QuizCategory, QuizConfig, QuizAttempt } from '../types/quiz';
+import type { QuizAttempt, QuizCategory, QuizConfig } from '../types/quiz';
 import { saveCustomGeoJson, saveCustomQuizMeta } from '../utils/storage';
+import {
+  CATEGORY_ORDER,
+  categoryLabel,
+  cleanQuizTitle,
+  itemCountLabel,
+} from '../utils/quizDisplay';
 
-interface QuizBuilderModalProps {
+interface QuizBuilderTabProps {
   customQuizzes: QuizConfig[];
   attempts: QuizAttempt[];
   enrolledIds: string[];
-  onQuizCreated: (updatedCustomQuizzes: QuizConfig[], newQuizId: string, enrollImmediately: boolean) => void;
+  onQuizCreated: (
+    updatedCustomQuizzes: QuizConfig[],
+    newQuizId: string,
+    enrollImmediately: boolean
+  ) => void;
   onDeleteCustomQuiz: (quizId: string) => void;
-  onImportBackup: (attempts: QuizAttempt[], customQuizzes: QuizConfig[], enrolledIds?: string[]) => void;
+  onImportBackup: (
+    attempts: QuizAttempt[],
+    customQuizzes: QuizConfig[],
+    enrolledIds?: string[]
+  ) => void;
 }
 
-export const QuizBuilderTab: React.FC<QuizBuilderModalProps> = ({
+const inputClass =
+  'w-full px-3 py-2 rounded bg-ink-950 border border-ink-800 text-base sm:text-xs text-white outline-none focus:border-accent-500 disabled:opacity-50';
+
+const labelClass = 'mb-1 block text-[11px] uppercase tracking-wide text-ink-400';
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+export function QuizBuilderTab({
   customQuizzes,
   attempts,
   enrolledIds,
   onQuizCreated,
   onDeleteCustomQuiz,
   onImportBackup,
-}) => {
+}: QuizBuilderTabProps) {
   const [title, setTitle] = useState('');
   const [countryOrRegion, setCountryOrRegion] = useState('');
   const [tagsInput, setTagsInput] = useState('');
   const [category, setCategory] = useState<QuizCategory>('niche-subdivisions');
-  const [geoJsonData, setGeoJsonData] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [geoJsonData, setGeoJsonData] = useState<GeoJSON.FeatureCollection | null>(
+    null
+  );
   const [availableProps, setAvailableProps] = useState<string[]>([]);
   const [selectedNameProp, setSelectedNameProp] = useState('');
   const [filterProp, setFilterProp] = useState('');
@@ -46,82 +72,97 @@ export const QuizBuilderTab: React.FC<QuizBuilderModalProps> = ({
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [syncCodeInput, setSyncCodeInput] = useState('');
 
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  function handleFileUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
     if (!file) return;
+
     setError(null);
     setSuccessMsg(null);
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = (readerEvent) => {
       try {
-        const parsed = JSON.parse(String(event.target?.result));
+        const parsed = JSON.parse(String(readerEvent.target?.result));
         if (!parsed || parsed.type !== 'FeatureCollection' || !Array.isArray(parsed.features)) {
-          throw new Error('File must be a GeoJSON FeatureCollection.');
+          throw new Error('That file is not a GeoJSON FeatureCollection.');
         }
         if (parsed.features.length === 0) {
-          throw new Error('GeoJSON has 0 features.');
+          throw new Error('That file has no features.');
         }
+
         const firstProps = parsed.features[0].properties || {};
         const keys = Object.keys(firstProps);
         if (keys.length === 0) {
-          throw new Error('GeoJSON features have no properties.');
+          throw new Error('The features in that file have no properties.');
         }
 
         setGeoJsonData(parsed);
         setAvailableProps(keys);
 
-        const preferred = keys.find((k) =>
-          /^(adm2_name|name|shapeName|NAME_1|NAME_2|STATE_NAME|suburb|LOC_NAME|admin|nom)$/i.test(k)
+        const preferred = keys.find((key) =>
+          /^(adm2_name|name|shapeName|NAME_1|NAME_2|STATE_NAME|suburb|LOC_NAME|admin|nom)$/i.test(
+            key
+          )
         );
         setSelectedNameProp(preferred || keys[0]);
 
         if (!title) {
-          setTitle(file.name.replace(/\.(geo)?json$/i, '').replace(/[-_]/g, ' '));
+          setTitle(
+            file.name
+              .replace(/\.(geo)?json$/i, '')
+              .replace(/[-_]/g, ' ')
+              .trim()
+          );
         }
-      } catch (err: any) {
-        setError(err.message || 'Could not parse GeoJSON');
+      } catch (uploadError) {
+        setError(errorMessage(uploadError, 'Could not read that GeoJSON file.'));
         setGeoJsonData(null);
+        setAvailableProps([]);
       }
     };
     reader.readAsText(file);
   }
 
-  async function handleCreateQuiz(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleCreateQuiz(event: FormEvent) {
+    event.preventDefault();
     if (!geoJsonData || !selectedNameProp || !title.trim()) {
-      setError('Required: Title, GeoJSON file, and Name Property.');
+      setError('Add a title, a GeoJSON file, and the property that names each place.');
       return;
     }
 
     setSaving(true);
     setError(null);
+
     try {
       let activeFeatures = geoJsonData.features;
       if (filterProp && filterVal.trim()) {
         activeFeatures = activeFeatures.filter(
-          (f) =>
-            String(f.properties?.[filterProp] || '').trim().toLowerCase() ===
-            filterVal.trim().toLowerCase()
+          (feature) =>
+            String(feature.properties?.[filterProp] || '')
+              .trim()
+              .toLowerCase() === filterVal.trim().toLowerCase()
         );
       }
 
       const uniqueNames = new Set(
         activeFeatures
-          .map((f) => String(f.properties?.[selectedNameProp] || '').trim())
+          .map((feature) => String(feature.properties?.[selectedNameProp] || '').trim())
           .filter(Boolean)
       );
 
       if (uniqueNames.size === 0) {
-        throw new Error(`0 features matched property "${selectedNameProp}".`);
+        throw new Error(`No features matched the property "${selectedNameProp}".`);
       }
 
       const parsedTags = tagsInput
         .split(',')
-        .map((t) => t.trim())
+        .map((tag) => tag.trim())
         .filter(Boolean);
 
-      const id = `custom-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString().slice(-4)}`;
+      const id = `custom-${title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString().slice(-4)}`;
+
       const newQuiz: QuizConfig = {
         id,
         title: title.trim(),
@@ -141,16 +182,20 @@ export const QuizBuilderTab: React.FC<QuizBuilderModalProps> = ({
       const updatedMeta = saveCustomQuizMeta(newQuiz);
       onQuizCreated(updatedMeta, id, enrollOnCreate);
 
-      setSuccessMsg(`Saved "${newQuiz.title}" (${uniqueNames.size} items).`);
+      setSuccessMsg(
+        `"${newQuiz.title}" is ready — ${uniqueNames.size} places to practise.`
+      );
       setTitle('');
       setCountryOrRegion('');
       setTagsInput('');
       setFilterProp('');
       setFilterVal('');
+      setEnrollOnCreate(false);
       setGeoJsonData(null);
       setAvailableProps([]);
-    } catch (err: any) {
-      setError(err.message || 'Failed to save quiz');
+      setSelectedNameProp('');
+    } catch (createError) {
+      setError(errorMessage(createError, 'Could not create that quiz.'));
     } finally {
       setSaving(false);
     }
@@ -164,29 +209,33 @@ export const QuizBuilderTab: React.FC<QuizBuilderModalProps> = ({
       attempts,
       customQuizzes,
     };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: 'application/json',
+    });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `geoquiz-state-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `geo-index-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
     URL.revokeObjectURL(url);
   }
 
-  function handleImportBackupFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  function handleImportBackupFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
     if (!file) return;
+
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = (readerEvent) => {
       try {
-        const parsed = JSON.parse(String(event.target?.result));
+        const parsed = JSON.parse(String(readerEvent.target?.result));
         if (!Array.isArray(parsed.attempts)) {
-          throw new Error('Invalid state JSON.');
+          throw new Error('That file is not a Geo Index backup.');
         }
         onImportBackup(parsed.attempts, parsed.customQuizzes || [], parsed.enrolledIds);
-        setSuccessMsg(`Imported ${parsed.attempts.length} attempts.`);
-      } catch (err: any) {
-        setError(err.message || 'Failed to import JSON');
+        setError(null);
+        setSuccessMsg(`Restored ${parsed.attempts.length} practice runs.`);
+      } catch (importError) {
+        setError(errorMessage(importError, 'Could not import that backup.'));
       }
     };
     reader.readAsText(file);
@@ -201,14 +250,15 @@ export const QuizBuilderTab: React.FC<QuizBuilderModalProps> = ({
       customQuizzes,
     };
     const encoded = btoa(encodeURIComponent(JSON.stringify(payload)));
+
     navigator.clipboard
       .writeText(encoded)
       .then(() => {
-        setSuccessMsg('Copied sync code to clipboard! Paste it on your phone or PC to sync.');
+        setSuccessMsg('Sync code copied. Paste it on your other device from Create.');
       })
       .catch(() => {
         setSyncCodeInput(encoded);
-        setSuccessMsg('Generated sync code below — copy it to transfer across devices.');
+        setSuccessMsg('Sync code generated below — copy it to your other device.');
       });
   }
 
@@ -216,19 +266,21 @@ export const QuizBuilderTab: React.FC<QuizBuilderModalProps> = ({
     setError(null);
     const trimmed = syncCodeInput.trim();
     if (!trimmed) return;
+
     try {
-      const jsonStr = decodeURIComponent(atob(trimmed));
-      const parsed = JSON.parse(jsonStr);
+      const parsed = JSON.parse(decodeURIComponent(atob(trimmed)));
       if (!Array.isArray(parsed.attempts)) {
-        throw new Error('Invalid sync code format.');
+        throw new Error('Invalid sync code.');
       }
       onImportBackup(parsed.attempts, parsed.customQuizzes || [], parsed.enrolledIds);
       setSyncCodeInput('');
       setSuccessMsg(
-        `Synced ${parsed.attempts.length} attempts & ${(parsed.enrolledIds || []).length} queued quizzes!`
+        `Loaded ${parsed.attempts.length} runs and ${
+          (parsed.enrolledIds || []).length
+        } queued quizzes.`
       );
-    } catch (err: any) {
-      setError('Invalid sync code. Make sure you copied the full string.');
+    } catch {
+      setError('That sync code could not be read. Make sure you copied all of it.');
     }
   }
 
@@ -237,290 +289,368 @@ export const QuizBuilderTab: React.FC<QuizBuilderModalProps> = ({
       ? Array.from(
           new Set(
             geoJsonData.features
-              .filter((f) =>
+              .filter((feature) =>
                 filterProp && filterVal.trim()
-                  ? String(f.properties?.[filterProp] || '').trim().toLowerCase() ===
-                    filterVal.trim().toLowerCase()
+                  ? String(feature.properties?.[filterProp] || '')
+                      .trim()
+                      .toLowerCase() === filterVal.trim().toLowerCase()
                   : true
               )
-              .map((f) => String(f.properties?.[selectedNameProp] || '').trim())
+              .map((feature) => String(feature.properties?.[selectedNameProp] || '').trim())
               .filter(Boolean)
           )
         ).slice(0, 15)
       : [];
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-5 space-y-6 font-mono">
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-        <div className="text-xs font-bold text-slate-300 border-b border-slate-800 pb-2.5 mb-4">
-          IMPORT_GEOJSON_QUIZ
-        </div>
-
-        {error && (
-          <div className="mb-4 p-2.5 rounded bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-5 font-mono">
+      <div className="space-y-6">
+        <section className="bg-ink-900 border border-ink-800 rounded-xl p-5">
+          <div className="text-xs font-bold text-ink-300 border-b border-ink-800 pb-2.5 mb-4">
+            IMPORT GEOJSON QUIZ
           </div>
-        )}
+          <p className="mb-4 text-xs leading-5 text-ink-500">
+            Upload a FeatureCollection once. Geo Index reads the names from the
+            property you choose, so the same file can power several quizzes.
+          </p>
 
-        {successMsg && (
-          <div className="mb-4 p-2.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span>{successMsg}</span>
-          </div>
-        )}
+          {error ? (
+            <div
+              role="alert"
+              className="mb-4 p-2.5 rounded bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2"
+            >
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+          ) : null}
 
-        <form onSubmit={handleCreateQuiz} className="space-y-4 text-xs">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {successMsg ? (
+            <div
+              role="status"
+              className="mb-4 p-2.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2"
+            >
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{successMsg}</span>
+            </div>
+          ) : null}
+
+          <form onSubmit={handleCreateQuiz} className="space-y-4 text-xs">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <span className={labelClass}>GeoJSON file</span>
+                <label
+                  htmlFor="geojson-file"
+                  className="flex cursor-pointer items-center justify-between gap-3 rounded border border-dashed border-ink-700 bg-ink-950 px-3 py-2 transition hover:border-accent-500"
+                >
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <FileUp className="h-4 w-4 shrink-0 text-accent-400" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-xs text-ink-200">
+                        {geoJsonData
+                          ? `${geoJsonData.features.length} features loaded`
+                          : 'Choose a .geojson or .json file'}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-ink-500">
+                        {geoJsonData
+                          ? 'Ready to preview below'
+                          : 'A FeatureCollection with one feature per place'}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="shrink-0 rounded border border-ink-700 px-2 py-1 text-[11px] text-ink-300">
+                    Browse
+                  </span>
+                  <input
+                    id="geojson-file"
+                    type="file"
+                    accept=".geojson,.json,application/json"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+
+              <div>
+                <label htmlFor="quiz-title" className={labelClass}>
+                  Title
+                </label>
+                <input
+                  id="quiz-title"
+                  type="text"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder="e.g. New South Wales: Local Government Areas"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="quiz-region" className={labelClass}>
+                  Region
+                </label>
+                <input
+                  id="quiz-region"
+                  type="text"
+                  value={countryOrRegion}
+                  onChange={(event) => setCountryOrRegion(event.target.value)}
+                  placeholder="e.g. Australia, United States, World"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="quiz-category" className={labelClass}>
+                  Category
+                </label>
+                <select
+                  id="quiz-category"
+                  value={category}
+                  onChange={(event) => setCategory(event.target.value as QuizCategory)}
+                  className={`${inputClass} cursor-pointer`}
+                >
+                  {CATEGORY_ORDER.map((option) => (
+                    <option key={option} value={option}>
+                      {categoryLabel(option)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="name-property" className={labelClass}>
+                  Name property
+                </label>
+                <select
+                  id="name-property"
+                  value={selectedNameProp}
+                  onChange={(event) => setSelectedNameProp(event.target.value)}
+                  disabled={availableProps.length === 0}
+                  className={`${inputClass} cursor-pointer`}
+                >
+                  {availableProps.length === 0 ? (
+                    <option value="">Load a file first</option>
+                  ) : (
+                    availableProps.map((property) => (
+                      <option key={property} value={property}>
+                        {property}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="filter-property" className={labelClass}>
+                  Filter property <span className="text-ink-500">(optional)</span>
+                </label>
+                <select
+                  id="filter-property"
+                  value={filterProp}
+                  onChange={(event) => setFilterProp(event.target.value)}
+                  disabled={availableProps.length === 0}
+                  className={`${inputClass} cursor-pointer`}
+                >
+                  <option value="">Use every feature</option>
+                  {availableProps.map((property) => (
+                    <option key={property} value={property}>
+                      {property}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="filter-value" className={labelClass}>
+                  Filter value <span className="text-ink-500">(optional)</span>
+                </label>
+                <input
+                  id="filter-value"
+                  type="text"
+                  value={filterVal}
+                  onChange={(event) => setFilterVal(event.target.value)}
+                  disabled={!filterProp}
+                  placeholder="e.g. Central"
+                  className={inputClass}
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label htmlFor="quiz-tags" className={labelClass}>
+                  Tags <span className="text-ink-500">(optional)</span>
+                </label>
+                <input
+                  id="quiz-tags"
+                  type="text"
+                  value={tagsInput}
+                  onChange={(event) => setTagsInput(event.target.value)}
+                  placeholder="Comma separated, e.g. Australia, NSW, coast"
+                  className={inputClass}
+                />
+                <p className="mt-1.5 text-xs text-ink-500">
+                  Tags are searchable and help you group your own quizzes.
+                </p>
+              </div>
+            </div>
+
+            {samplePreviewNames.length > 0 ? (
+              <div className="bg-ink-950 border border-ink-800 rounded p-2.5">
+                <p className="mb-2 text-xs text-ink-500">
+                  Previewing {samplePreviewNames.length} names
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {samplePreviewNames.map((name) => (
+                    <span
+                      key={name}
+                      className="px-1.5 py-0.5 rounded bg-ink-900 border border-ink-800 text-[11px] text-ink-300"
+                    >
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-300">
+                <input
+                  type="checkbox"
+                  checked={enrollOnCreate}
+                  onChange={(event) => setEnrollOnCreate(event.target.checked)}
+                  className="accent-accent-500"
+                />
+                Add to revision queue after creating
+              </label>
+
+              <button
+                type="submit"
+                disabled={saving || !geoJsonData}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded bg-accent-600 hover:bg-accent-500 disabled:opacity-40 text-white font-bold transition cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                {saving ? 'SAVING...' : 'CREATE QUIZ'}
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section className="overflow-hidden bg-ink-900 border border-ink-800 rounded-xl p-5">
+          <div className="flex items-center justify-between gap-3 border-b border-ink-800 pb-2">
             <div>
-              <label className="block text-slate-400 mb-1">GEOJSON_FILE</label>
-              <label className="flex items-center justify-center gap-2 px-3 py-2 rounded border border-dashed border-slate-700 hover:border-indigo-500 bg-slate-950 text-slate-300 cursor-pointer transition">
-                <FileUp className="w-3.5 h-3.5 text-indigo-400" />
-                <span>
-                  {geoJsonData
-                    ? `${geoJsonData.features.length} features loaded`
-                    : 'Select .geojson / .json'}
-                </span>
+              <h2 className="text-xs font-bold uppercase text-ink-300">YOUR CUSTOM QUIZZES</h2>
+              <p className="mt-0.5 text-xs text-ink-500">
+                Quizzes you have imported into this browser.
+              </p>
+            </div>
+            <span className="text-xs text-ink-500">{customQuizzes.length}</span>
+          </div>
+
+          {customQuizzes.length === 0 ? (
+            <p className="py-4 text-center text-xs text-ink-500">
+              Nothing here yet. Your first imported quiz will appear in this list.
+            </p>
+          ) : (
+            <ul>
+              {customQuizzes.map((quiz) => (
+                <li
+                  key={quiz.id}
+                  className="flex items-center justify-between gap-4 py-2.5 border-b border-ink-800/70 last:border-0"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-bold text-ink-200">
+                      {cleanQuizTitle(quiz.title)}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-ink-500">
+                      {quiz.countryOrRegion} · {categoryLabel(quiz.category)} ·{' '}
+                      {itemCountLabel(quiz)}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onDeleteCustomQuiz(quiz.id)}
+                    aria-label={`Delete ${cleanQuizTitle(quiz.title)}`}
+                    title="Delete quiz"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 shrink-0 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 text-xs cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    DELETE
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="bg-ink-900 border border-ink-800 rounded-xl p-5 space-y-4 text-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="max-w-xl">
+              <h2 className="text-xs font-bold text-ink-300">BACKUP &amp; SYNC</h2>
+              <p className="mt-1 text-xs leading-5 text-ink-500">
+                Copy a sync code or export a JSON file to move your progress between
+                devices. Importing replaces the data stored in this browser.
+              </p>
+              <p className="mt-2 text-xs text-ink-500">
+                {attempts.length} practice {attempts.length === 1 ? 'run' : 'runs'} ·{' '}
+                {enrolledIds.length} queued · {customQuizzes.length} custom
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleCopySyncCode}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-accent-600 hover:bg-accent-500 text-white font-bold cursor-pointer"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                COPY SYNC CODE
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExportProgress}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-ink-800 hover:bg-ink-700 text-ink-200 border border-ink-700 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-accent-400" />
+                EXPORT JSON
+              </button>
+
+              <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-ink-800 hover:bg-ink-700 text-ink-200 border border-ink-700 cursor-pointer">
+                <Upload className="w-3.5 h-3.5 text-emerald-400" />
+                IMPORT JSON
                 <input
                   type="file"
-                  accept=".geojson,.json,application/json"
-                  onChange={handleFileUpload}
+                  accept=".json,application/json"
+                  onChange={handleImportBackupFile}
                   className="hidden"
                 />
               </label>
             </div>
-
-            <div>
-              <label className="block text-slate-400 mb-1">NAME_PROPERTY</label>
-              <select
-                value={selectedNameProp}
-                onChange={(e) => setSelectedNameProp(e.target.value)}
-                disabled={availableProps.length === 0}
-                className="w-full px-3 py-2 rounded bg-slate-950 border border-slate-800 text-white disabled:opacity-50 outline-none focus:border-indigo-500"
-              >
-                {availableProps.length === 0 ? (
-                  <option value="">—</option>
-                ) : (
-                  availableProps.map((prop) => (
-                    <option key={prop} value={prop}>
-                      {prop}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-400 mb-1">FILTER_PROPERTY (OPTIONAL)</label>
-              <select
-                value={filterProp}
-                onChange={(e) => setFilterProp(e.target.value)}
-                disabled={availableProps.length === 0}
-                className="w-full px-3 py-2 rounded bg-slate-950 border border-slate-800 text-white disabled:opacity-50 outline-none focus:border-indigo-500"
-              >
-                <option value="">None (use all features)</option>
-                {availableProps.map((prop) => (
-                  <option key={prop} value={prop}>
-                    {prop}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-slate-400 mb-1">FILTER_VALUE (OPTIONAL)</label>
-              <input
-                type="text"
-                value={filterVal}
-                onChange={(e) => setFilterVal(e.target.value)}
-                disabled={!filterProp}
-                placeholder="e.g., Central"
-                className="w-full px-3 py-2 rounded bg-slate-950 border border-slate-800 text-white disabled:opacity-50 outline-none focus:border-indigo-500"
-              />
-            </div>
-          </div>
-
-          {samplePreviewNames.length > 0 && (
-            <div className="bg-slate-950 border border-slate-800 rounded p-2.5">
-              <div className="text-[11px] text-slate-500 mb-1">
-                PREVIEW [{samplePreviewNames.length} shown]:
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {samplePreviewNames.map((name) => (
-                  <span
-                    key={name}
-                    className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 text-[11px]"
-                  >
-                    {name}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <div className="sm:col-span-2">
-              <label className="block text-slate-400 mb-1">TITLE</label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Quiz title"
-                className="w-full px-3 py-2 rounded bg-slate-950 border border-slate-800 text-white outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-400 mb-1">REGION_CODE</label>
-              <input
-                type="text"
-                value={countryOrRegion}
-                onChange={(e) => setCountryOrRegion(e.target.value)}
-                placeholder="e.g. AUS / USA"
-                className="w-full px-3 py-2 rounded bg-slate-950 border border-slate-800 text-white outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-400 mb-1">CATEGORY</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as QuizCategory)}
-                className="w-full px-3 py-2 rounded bg-slate-950 border border-slate-800 text-white outline-none focus:border-indigo-500"
-              >
-                <option value="niche-subdivisions">niche-subdivisions</option>
-                <option value="subdivisions">subdivisions</option>
-                <option value="cities">cities</option>
-                <option value="landscapes">landscapes</option>
-                <option value="flags">flags</option>
-                <option value="leisure">leisure</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
-            <div>
-              <label className="block text-slate-400 mb-1">TECHNICAL_TAGS (COMMA SEPARATED)</label>
-              <input
-                type="text"
-                value={tagsInput}
-                onChange={(e) => setTagsInput(e.target.value)}
-                placeholder="e.g. AUS, SAL, VIC"
-                className="w-full px-3 py-2 rounded bg-slate-950 border border-slate-800 text-white outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <label className="flex items-center gap-2 pt-4 cursor-pointer text-slate-300">
-              <input
-                type="checkbox"
-                checked={enrollOnCreate}
-                onChange={(e) => setEnrollOnCreate(e.target.checked)}
-                className="accent-indigo-500"
-              />
-              <span>Enroll directly into Revision Queue</span>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-3 border-t border-ink-800">
+            <label htmlFor="sync-code" className="sr-only">
+              Sync code
             </label>
-          </div>
-
-          <button
-            type="submit"
-            disabled={saving || !geoJsonData}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold transition cursor-pointer"
-          >
-            <PlusCircle className="w-3.5 h-3.5" />
-            {saving ? 'SAVING...' : 'CREATE QUIZ'}
-          </button>
-        </form>
-      </div>
-
-      {customQuizzes.length > 0 && (
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-2 text-xs">
-          <div className="font-bold text-slate-300 border-b border-slate-800 pb-2">
-            CUSTOM_QUIZZES ({customQuizzes.length})
-          </div>
-          <div className="divide-y divide-slate-800">
-            {customQuizzes.map((q) => (
-              <div key={q.id} className="py-2.5 flex items-center justify-between gap-4">
-                <div>
-                  <span className="font-bold text-white">{q.title}</span>
-                  <span className="text-slate-500 ml-2">
-                    [{q.totalItems} items • prop: {q.nameProperty}]
-                  </span>
-                </div>
-                <button
-                  onClick={() => onDeleteCustomQuiz(q.id)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  DELETE
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 text-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="font-bold text-slate-300">STATE_SNAPSHOT_IO (PC ↔ MOBILE SYNC)</div>
-            <div className="text-slate-500 mt-0.5">
-              {attempts.length} logged runs • {enrolledIds.length} enrolled in queue (stored locally in browser)
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <input
+              id="sync-code"
+              type="text"
+              value={syncCodeInput}
+              onChange={(event) => setSyncCodeInput(event.target.value)}
+              placeholder="Paste a sync code from another device"
+              className={`${inputClass} flex-1`}
+            />
             <button
               type="button"
-              onClick={handleCopySyncCode}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer"
+              onClick={handleApplySyncCode}
+              disabled={!syncCodeInput.trim()}
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-bold cursor-pointer shrink-0"
             >
-              <Copy className="w-3.5 h-3.5" />
-              COPY SYNC CODE
+              <ClipboardPaste className="w-3.5 h-3.5" />
+              LOAD SYNC CODE
             </button>
-
-            <button
-              type="button"
-              onClick={handleExportProgress}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5 text-indigo-400" />
-              EXPORT JSON
-            </button>
-
-            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer">
-              <Upload className="w-3.5 h-3.5 text-emerald-400" />
-              <span>IMPORT JSON</span>
-              <input
-                type="file"
-                accept=".json,application/json"
-                onChange={handleImportBackupFile}
-                className="hidden"
-              />
-            </label>
           </div>
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-3 border-t border-slate-800">
-          <input
-            type="text"
-            value={syncCodeInput}
-            onChange={(e) => setSyncCodeInput(e.target.value)}
-            placeholder="Paste sync code from another device here..."
-            className="flex-1 px-3 py-1.5 rounded bg-slate-950 border border-slate-800 text-base sm:text-xs text-white outline-none focus:border-indigo-500"
-          />
-          <button
-            type="button"
-            onClick={handleApplySyncCode}
-            disabled={!syncCodeInput.trim()}
-            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-bold cursor-pointer shrink-0"
-          >
-            <ClipboardPaste className="w-3.5 h-3.5" />
-            LOAD SYNC CODE
-          </button>
-        </div>
+        </section>
       </div>
     </div>
   );
-};
+}

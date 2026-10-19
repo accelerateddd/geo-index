@@ -259,27 +259,27 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
   );
 
   return (
-    <div className="w-full h-full flex items-center justify-center p-4 bg-slate-950">
-      <div className="max-w-4xl w-full bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center shadow-2xl relative">
-        <div className="w-full flex items-center justify-between text-[11px] text-slate-400 px-2 pb-2 border-b border-slate-800/80">
+    <div className="w-full h-full flex items-center justify-center p-4 bg-ink-950">
+      <div className="max-w-4xl w-full bg-ink-900 border border-ink-800 rounded-xl p-4 flex flex-col items-center justify-center shadow-2xl relative">
+        <div className="w-full flex items-center justify-between text-[11px] text-ink-400 px-2 pb-2 border-b border-ink-800/80 uppercase tracking-wide">
           <div className="flex items-center gap-3">
             <span>
-              PLOTTED_CITIES: <strong className="text-white">{displayedCities.length}</strong>
+              Cities shown: <strong className="text-white">{displayedCities.length}</strong>
             </span>
             {showCapitalStar && (
-              <span className="text-amber-300 font-bold">★ = CAPITAL</span>
+              <span className="text-amber-300 font-bold">★ Capital</span>
             )}
             {scaleByPopulation && (
-              <span className="text-sky-300">SIZE ∝ √POPULATION</span>
+              <span className="text-ink-500">Dot size scaled by population</span>
             )}
           </div>
           <div>
             {isRevealed ? (
               <span className="text-emerald-400 font-bold">
-                REVEALED: {item.countryName.toUpperCase()}
+                Answer: {item.countryName}
               </span>
             ) : (
-              <span className="text-slate-500">NORMALIZED RELATIVE POSITIONS</span>
+              <span className="text-ink-500">City positions</span>
             )}
           </div>
         </div>
@@ -323,7 +323,7 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
                   <path
                     d={createStarPath(cx, cy, Math.max(9.5, radius * 1.35))}
                     fill="#facc15"
-                    stroke="#0f172a"
+                    stroke="#020617"
                     strokeWidth={1.8}
                   />
                 ) : (
@@ -356,7 +356,7 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
                     <text
                       x={cx + radius + 10}
                       y={cy + 3}
-                      fill={isCapStar ? '#fde047' : '#f8fafc'}
+                      fill={isCapStar ? '#fde047' : '#ffffff'}
                       fontSize={11}
                       fontWeight="bold"
                     >
@@ -391,7 +391,7 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
                 fontSize={9.5}
                 fontWeight="bold"
               >
-                SCALE REF: {scaleRefRender.name}
+                SCALE REFERENCE: {scaleRefRender.name}
               </text>
               <text
                 x={viewW - 195}

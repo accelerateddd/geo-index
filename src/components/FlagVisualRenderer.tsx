@@ -61,8 +61,8 @@ export const FlagVisualRenderer: React.FC<FlagVisualRendererProps> = ({
         alt="Flag"
         className={
           size === 'large'
-            ? 'max-h-72 max-w-full object-contain rounded border border-slate-700 shadow-lg'
-            : 'max-h-24 max-w-full object-contain rounded border border-slate-700'
+            ? 'max-h-72 max-w-full object-contain rounded border border-ink-700 shadow-lg'
+            : 'max-h-24 max-w-full object-contain rounded border border-ink-700'
         }
       />
     );
@@ -74,8 +74,8 @@ export const FlagVisualRenderer: React.FC<FlagVisualRendererProps> = ({
         ref={canvasRef}
         className={
           size === 'large'
-            ? 'max-h-72 max-w-full object-contain rounded border border-slate-700 shadow-lg bg-slate-950'
-            : 'max-h-24 max-w-full object-contain rounded border border-slate-700 bg-slate-950'
+            ? 'max-h-72 max-w-full object-contain rounded border border-ink-700 shadow-lg bg-ink-950'
+            : 'max-h-24 max-w-full object-contain rounded border border-ink-700 bg-ink-950'
         }
       />
     );
@@ -151,22 +151,22 @@ export const FlagVisualRenderer: React.FC<FlagVisualRendererProps> = ({
       {loadedUrl === item.imageUrl && pieSlices.length > 0 && (
         <div className={size === 'large' ? 'space-y-1.5 min-w-[140px]' : 'space-y-1'}>
           {size === 'large' && (
-            <div className="text-[10px] text-slate-500 font-bold tracking-wider">
+            <div className="text-[10px] text-ink-500 font-bold tracking-wider">
               COLOUR_MAKEUP
             </div>
           )}
           {pieSlices.map((slice, idx) => (
             <div
               key={`${idx}-${slice.hex}`}
-              className="flex items-center justify-between gap-2.5 text-xs bg-slate-950 border border-slate-800 rounded px-2 py-1"
+              className="flex items-center justify-between gap-2.5 text-xs bg-ink-950 border border-ink-800 rounded px-2 py-1"
             >
               <div className="flex items-center gap-2">
                 <span
-                  className="w-3.5 h-3.5 rounded-sm border border-slate-600 shrink-0"
+                  className="w-3.5 h-3.5 rounded-sm border border-ink-600 shrink-0"
                   style={{ backgroundColor: slice.hex }}
                 />
                 {size === 'large' && (
-                  <span className="text-[11px] text-slate-400">{slice.hex}</span>
+                  <span className="text-[11px] text-ink-400">{slice.hex}</span>
                 )}
               </div>
               <span className="font-bold text-white text-[11px]">{slice.percent}%</span>

@@ -36,6 +36,8 @@ import {
   loadCustomGeoJson,
   saveTrackedPresetForQuiz,
 } from '../utils/storage';
+import { nowMs, shuffledCopy } from '../utils/runtime';
+import { cleanQuizTitle } from '../utils/quizDisplay';
 import {
   bboxesIntersect,
   clipSubdivisionsAgainstLakes,
@@ -153,6 +155,12 @@ function MapBoundsController({
   return null;
 }
 
+function getFeatureName(feature: GeoJSON.Feature, nameProperty?: string): string {
+  const props = feature.properties || {};
+  const propKey = nameProperty || 'name';
+  const raw = props[propKey];
+  return raw ? String(raw).trim() : '';
+}
 const TYPE_GEOMETRY_MODES_INFO: Array<{
   id: MapDisplayStyle;
   label: string;
@@ -160,28 +168,28 @@ const TYPE_GEOMETRY_MODES_INFO: Array<{
 }> = [
   {
     id: 'all-outlines',
-    label: 'ALL_OUTLINES',
-    shortDesc: 'Full map with all outlines visible; target highlighted in yellow.',
+    label: 'Show all outlines',
+    shortDesc: 'The full map, with the target highlighted.',
   },
   {
     id: 'centroid-dot',
-    label: 'CENTROID_DOT',
-    shortDesc: 'Country/continent outline only; target replaced by a dot at its geometric center.',
+    label: 'Centre dot',
+    shortDesc: 'Country outline only, with the target marked at its centre.',
   },
   {
     id: 'isolated-outline-in-country',
-    label: 'SINGLE_DIV_IN_COUNTRY',
-    shortDesc: 'Outer border visible; only the current target outline is drawn.',
+    label: 'Target only',
+    shortDesc: 'The country border stays visible, but only the target outline is drawn.',
   },
   {
     id: 'isolated-shape',
-    label: 'SHAPE_ONLY',
-    shortDesc: 'No map context; displays an isolated high-definition SVG of the target shape.',
+    label: 'Shape only',
+    shortDesc: 'No map: just an isolated, high-detail outline of the target.',
   },
   {
     id: 'unit-vectors',
-    label: 'UNIT_VECTORS',
-    shortDesc: 'No shape drawn; shows unit vectors from center to the N closest items.',
+    label: 'Nearest neighbours',
+    shortDesc: 'No shape: lines from the centre to its nearest neighbours.',
   },
 ];
 
@@ -192,14 +200,14 @@ const CLICK_GEOMETRY_MODES_INFO: Array<{
 }> = [
   {
     id: 'all-outlines',
-    label: 'STANDARD_OUTLINES',
-    shortDesc: 'All outlines are visible; click the named target.',
+    label: 'Standard outlines',
+    shortDesc: 'Every outline is visible. Click the named place.',
   },
   {
     id: 'minefield-no-outlines',
-    label: 'MINEFIELD (NO SUBDIVISION OUTLINES)',
+    label: 'Hidden outlines',
     shortDesc:
-      'Only the outer country/continent border is shown; internal outlines stay hidden until found.',
+      'Only the outer border is shown. Inner outlines stay hidden until you find them.',
   },
 ];
 
@@ -210,20 +218,20 @@ const FLAG_DISPLAY_MODES_INFO: Array<{
 }> = [
   {
     id: 'standard',
-    label: 'STANDARD_FLAG',
-    shortDesc: 'Displays the unaltered high-detail flag image.',
+    label: 'Standard flag',
+    shortDesc: 'The flag as it normally looks.',
   },
   {
     id: 'filtered',
-    label: 'FILTERED_FLAG (MULTI-LAYER)',
+    label: 'Filtered flag',
     shortDesc:
-      'Applies a customisable stack of visual filters (Pixelate, Swirl, B&W, Colour Blind, etc.).',
+      'Layer visual filters such as pixelate, swirl, grayscale or colour-blind previews.',
   },
   {
     id: 'pie-chart',
-    label: 'COLOUR_PIE_CHART',
+    label: 'Colour pie chart',
     shortDesc:
-      'Displays a pie chart of the flag’s exact percentage colour makeup instead of the flag itself.',
+      'A pie chart of the flag’s exact colour proportions.',
   },
 ];
 
@@ -288,20 +296,42 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
   const [isFinished, setIsFinished] = useState(false);
   const [autoZoomTarget, setAutoZoomTarget] = useState(false);
   const [fitTrigger, setFitTrigger] = useState(0);
-  const [sessionSeed, setSessionSeed] = useState<number>(() => Date.now());
+  const [sessionSeed, setSessionSeed] = useState<number>(() => nowMs());
 
   const inputRef = useRef<HTMLInputElement>(null);
-  const startTimeRef = useRef<number>(Date.now());
+  const startTimeRef = useRef<number>(0);
   const quizFlagIcon = useMemo(() => getQuizFlagIconUrl(quiz), [quiz]);
 
-  useEffect(() => {
-    const preset = getTrackedPresetForQuiz(quiz.id);
-    setTrackedPreset(preset);
-    setSettings(preset);
-    setHasStarted(false);
-    setShowOptionsPanel(false);
+
+  function initializeSessionFromNames(
+    allNames: string[],
+    subset: string[] | null = practiceSubset
+  ) {
+    const activeNames =
+      subset && subset.length > 0
+        ? allNames.filter((n) => subset.includes(n))
+        : allNames;
+
+    const shuffled = shuffledCopy(activeNames);
+
+    const statuses: Record<string, RegionStatus> = {};
+    for (const name of activeNames) {
+      statuses[name] = { name, state: 'pending', attempts: 0 };
+    }
+
+    setQueue(shuffled);
+    setCurrentIndex(0);
+    setRegionStatuses(statuses);
+    setInputValue('');
+    setIsFinished(false);
+    setFeedbackBanner(null);
+    setLastWrongSubmission(null);
     setSpecialRevealState(null);
-  }, [quiz.id]);
+    setSessionSeed(nowMs());
+    startTimeRef.current = nowMs();
+    setElapsedSeconds(0);
+    setTimeout(() => inputRef.current?.focus(), 60);
+  }
 
   // Load major lakes & reservoirs + world country outlines
   useEffect(() => {
@@ -459,7 +489,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
           const uniqueNames = Array.from(
             new Set(
               finalCollection.features
-                .map((f) => getFeatureName(f))
+                .map((f) => getFeatureName(f, quiz.nameProperty))
                 .filter((name) => name.length > 0)
             )
           );
@@ -477,14 +507,22 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [quiz.id, quiz.filterProperty, quiz.filterValue, practiceSubset, format]);
+  }, [
+    quiz.id,
+    quiz.filterProperty,
+    quiz.filterValue,
+    quiz.nameProperty,
+    quiz.backgroundGeoJsonUrl,
+    quiz.customGeoJson,
+    quiz.flagItems,
+    quiz.geoJsonUrl,
+    quiz.cityItems,
+    quiz.isCustom,
+    quiz.specialDataUrl,
+    practiceSubset,
+    format,
+  ]);
 
-  function getFeatureName(feature: GeoJSON.Feature): string {
-    const props = feature.properties || {};
-    const propKey = quiz.nameProperty || 'name';
-    const raw = props[propKey];
-    return raw ? String(raw).trim() : '';
-  }
 
   const isRiverOrLineQuiz = useMemo(() => {
     if (!geoJsonData || format !== 'map-polygon') return false;
@@ -538,7 +576,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
     const map: Record<string, GeoJSON.Feature[]> = {};
     if (!effectiveGeoJsonData || format !== 'map-polygon') return map;
     for (const f of effectiveGeoJsonData.features) {
-      const n = getFeatureName(f);
+      const n = getFeatureName(f, quiz.nameProperty);
       if (!n) continue;
       if (!map[n]) map[n] = [];
       map[n].push(f);
@@ -587,40 +625,6 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
     return { type: 'FeatureCollection', features: matches };
   }, [worldCountries, backgroundGeoJson, geoJsonData, quiz.tags, quiz.countryOrRegion]);
 
-  function initializeSessionFromNames(
-    allNames: string[],
-    subset: string[] | null = practiceSubset
-  ) {
-    const activeNames =
-      subset && subset.length > 0
-        ? allNames.filter((n) => subset.includes(n))
-        : allNames;
-
-    const shuffled = [...activeNames];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-
-    const statuses: Record<string, RegionStatus> = {};
-    for (const name of activeNames) {
-      statuses[name] = { name, state: 'pending', attempts: 0 };
-    }
-
-    setQueue(shuffled);
-    setCurrentIndex(0);
-    setRegionStatuses(statuses);
-    setInputValue('');
-    setIsFinished(false);
-    setFeedbackBanner(null);
-    setLastWrongSubmission(null);
-    setSpecialRevealState(null);
-    setSessionSeed(Date.now());
-    startTimeRef.current = Date.now();
-    setElapsedSeconds(0);
-    setTimeout(() => inputRef.current?.focus(), 60);
-  }
-
   function startOrRestartQuiz(subset: string[] | null = practiceSubset) {
     setHasStarted(true);
     setShowOptionsPanel(false);
@@ -637,7 +641,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
       const uniqueNames = Array.from(
         new Set(
           geoJsonData.features
-            .map((f) => getFeatureName(f))
+            .map((f) => getFeatureName(f, quiz.nameProperty))
             .filter((name) => name.length > 0)
         )
       );
@@ -648,7 +652,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
   useEffect(() => {
     if (!hasStarted || loading || isFinished || queue.length === 0) return;
     const interval = setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      setElapsedSeconds(Math.floor((nowMs() - startTimeRef.current) / 1000));
     }, 500);
     return () => clearInterval(interval);
   }, [hasStarted, loading, isFinished, queue.length]);
@@ -725,7 +729,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
     setSpecialRevealState(null);
     const durationSeconds = Math.max(
       1,
-      Math.floor((Date.now() - startTimeRef.current) / 1000)
+      Math.floor((nowMs() - startTimeRef.current) / 1000)
     );
     const values = Object.values(finalStatuses);
     const totalCount = values.length;
@@ -744,9 +748,9 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
     if (isTrackedRun) {
       const attempt: QuizAttempt = {
-        id: `${quiz.id}-${Date.now()}`,
+        id: `${quiz.id}-${nowMs()}`,
         quizId: quiz.id,
-        timestamp: Date.now(),
+        timestamp: nowMs(),
         scorePercent,
         correctCount,
         totalCount,
@@ -887,7 +891,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
         setSpecialRevealState({ outcome: 'correct', typedText: trimmed });
         setFeedbackBanner({
           type: 'correct',
-          text: `Correct! (${currentTargetName}) — Press ENTER for next country`,
+          text: `Correct! (${currentTargetName}) — press Enter for the next country`,
         });
       } else {
         const updatedStatuses: Record<string, RegionStatus> = {
@@ -905,7 +909,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
         setSpecialRevealState({ outcome: 'missed', typedText: trimmed });
         setFeedbackBanner({
           type: 'missed',
-          text: `Incorrect ("${trimmed}") → Answer: ${currentTargetName} — Press ENTER for next`,
+          text: `Incorrect ("${trimmed}") → Answer: ${currentTargetName} — press Enter for the next one`,
         });
       }
       return;
@@ -1027,7 +1031,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
       setSpecialRevealState({ outcome: 'missed', typedText: 'REVEALED' });
       setFeedbackBanner({
         type: 'missed',
-        text: `Revealed: ${currentTargetName} — Press ENTER for next country`,
+        text: `Revealed: ${currentTargetName} — press Enter for the next country`,
       });
       return;
     }
@@ -1195,13 +1199,13 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
   const mapLayerSyncKey = `${quiz.id}-${quiz.filterValue || 'all'}-${currentIndex}-${answeredCount}-${settings.mode}-${settings.mapDisplayStyle}-${hasStarted}-${showHydroOverlay}`;
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-56px)] bg-slate-950 text-slate-100 overflow-hidden font-mono">
+    <div className="flex flex-col h-[calc(100dvh-56px)] bg-ink-950 text-ink-100 overflow-hidden font-mono">
       {/* Compact Technical HUD Bar */}
-      <div className="bg-slate-900 border-b border-slate-800 px-2.5 py-1.5 sm:px-5 sm:py-2 flex flex-wrap items-center justify-between gap-2 z-20">
+      <div className="bg-ink-900 border-b border-ink-800 px-2.5 py-1.5 sm:px-5 sm:py-2 flex flex-wrap items-center justify-between gap-2 z-20">
         <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={onExit}
-            className="inline-flex items-center gap-1 px-2 py-1 sm:px-2.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs transition cursor-pointer shrink-0"
+            className="inline-flex items-center gap-1 px-2 py-1 sm:px-2.5 rounded bg-ink-800 hover:bg-ink-700 text-ink-200 text-xs uppercase transition cursor-pointer shrink-0"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span className="hidden xs:inline">ESC</span>
@@ -1211,20 +1215,20 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
               <img
                 src={quizFlagIcon}
                 alt=""
-                className="w-5 h-3.5 object-cover rounded-[2px] border border-slate-700 shrink-0"
+                className="w-5 h-3.5 object-cover rounded-[2px] border border-ink-700 shrink-0"
               />
             )}
             <h2 className="text-xs sm:text-sm font-bold text-white truncate max-w-[165px] sm:max-w-none">
-              {quiz.title}
+              {cleanQuizTitle(quiz.title)}
             </h2>
             <span
               className={`hidden md:inline-block px-1.5 py-0.5 text-[10px] rounded border shrink-0 ${
                 isTrackedRun
                   ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                  : 'bg-slate-800 border-slate-700 text-slate-400'
+                  : 'bg-ink-800 border-ink-700 text-ink-400'
               }`}
             >
-              {isTrackedRun ? 'REVISION_TRACKED' : 'UNTRACKED_VARIANT'}
+              {isTrackedRun ? 'REVISION RUN' : 'PRACTICE RUN'}
             </span>
           </div>
         </div>
@@ -1233,7 +1237,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
         <div className="flex items-center gap-1.5 flex-wrap">
           <button
             onClick={() => startOrRestartQuiz(practiceSubset)}
-            className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition cursor-pointer"
+            className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded bg-accent-600 hover:bg-accent-500 text-white text-xs font-bold transition cursor-pointer"
           >
             <Play className="w-3 h-3 fill-current" />
             <span>{hasStarted ? 'RESTART' : 'PLAY'}</span>
@@ -1244,7 +1248,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
             className={`inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded text-xs font-bold border transition cursor-pointer ${
               showOptionsPanel
                 ? 'bg-amber-500/20 border-amber-400 text-amber-300'
-                : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+                : 'bg-ink-800 border-ink-700 text-ink-200 hover:bg-ink-700'
             }`}
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -1265,11 +1269,11 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                     className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs border transition cursor-pointer ${
                       showHydroOverlay
                         ? 'bg-sky-500/20 border-sky-500/50 text-sky-300'
-                        : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'
+                        : 'bg-ink-800/80 border-ink-700 text-ink-400 hover:text-ink-200'
                     }`}
                   >
                     <Droplets className="w-3.5 h-3.5" />
-                    <span className="hidden md:inline">HYDRO</span>
+                    <span className="hidden md:inline">WATER</span>
                   </button>
                 )}
 
@@ -1278,8 +1282,8 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                     onClick={() => setAutoZoomTarget((v) => !v)}
                     className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs border transition cursor-pointer ${
                       autoZoomTarget
-                        ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300'
-                        : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'
+                        ? 'bg-accent-500/20 border-accent-500/50 text-accent-300'
+                        : 'bg-ink-800/80 border-ink-700 text-ink-400 hover:text-ink-200'
                     }`}
                   >
                     <Focus className="w-3.5 h-3.5" />
@@ -1289,10 +1293,10 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
                 <button
                   onClick={() => setFitTrigger((t) => t + 1)}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-slate-800/80 border border-slate-700 text-slate-400 hover:text-slate-200 transition cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-ink-800/80 border border-ink-700 text-ink-400 hover:text-ink-200 transition cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span className="hidden md:inline">FIT</span>
+                  <span className="hidden md:inline">RESET VIEW</span>
                 </button>
               </>
             )}
@@ -1300,14 +1304,16 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
         {/* Score & Clock */}
         <div className="flex items-center gap-1.5 sm:gap-2 text-xs">
-          <div className="flex items-center gap-1 px-2 py-1 rounded bg-slate-950 border border-slate-800">
+          <div className="flex items-center gap-1 px-2 py-1 rounded bg-ink-950 border border-ink-800">
             <span className="text-emerald-400 font-bold">{correctCount}</span>
-            <span className="text-slate-600">/</span>
-            <span className="text-slate-300">{totalCount}</span>
-            <span className="text-slate-400 hidden sm:inline ml-0.5">({currentAccuracy}%)</span>
+            <span className="text-ink-600">/</span>
+            <span className="text-ink-300">{totalCount}</span>
+            <span className="text-ink-400 hidden sm:inline ml-0.5">
+              {answeredCount > 0 ? `(${currentAccuracy}%)` : ''}
+            </span>
           </div>
-          <div className="flex items-center gap-1 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
-            <Clock className="w-3.5 h-3.5 text-indigo-400" />
+          <div className="flex items-center gap-1 px-2 py-1 rounded bg-ink-950 border border-ink-800 text-ink-300">
+            <Clock className="w-3.5 h-3.5 text-accent-400" />
             {formatClock(elapsedSeconds)}
           </div>
         </div>
@@ -1315,7 +1321,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
       {/* Input / Prompt Strip */}
       {hasStarted && !isFinished && !loading && (
-        <div className="bg-slate-900 border-b border-slate-800 px-2.5 py-1.5 sm:px-5 sm:py-2 z-10 space-y-1.5">
+        <div className="bg-ink-900 border-b border-ink-800 px-2.5 py-1.5 sm:px-5 sm:py-2 z-10 space-y-1.5">
           <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 sm:gap-2">
             {isSpecialCitiesQuiz ||
             settings.mode === 'type-highlighted' ||
@@ -1333,22 +1339,22 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                       placeholder={
                         isSpecialCitiesQuiz
                           ? specialRevealState
-                            ? 'Press ENTER for next country...'
-                            : 'Guess country from city pattern...'
+                            ? 'Press Enter for the next country...'
+                            : 'Which country is this?'
                           : settings.mode === 'list-all'
-                          ? 'LIST MODE: Type any item...'
+                          ? 'Type any answer…'
                           : settings.typingMatchMode === 'enter-submit'
-                          ? 'Type answer & press ENTER...'
-                          : 'Type answer (auto-match)...'
+                          ? 'Type an answer, then press Enter'
+                          : 'Type an answer'
                       }
                       autoComplete="off"
                       autoCorrect="off"
                       autoCapitalize="off"
                       spellCheck={false}
-                      className="w-full pl-3 pr-14 py-1.5 rounded-lg bg-slate-950 border border-indigo-500/50 focus:border-indigo-400 text-white placeholder-slate-500 text-base sm:text-sm outline-none"
+                      className="w-full pl-3 pr-14 py-1.5 rounded-lg bg-ink-950 border border-accent-500/50 focus:border-accent-400 text-white placeholder-ink-500 text-base sm:text-sm outline-none"
                     />
-                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-500 pointer-events-none">
-                      rem: {queue.length}
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-ink-500 pointer-events-none">
+                      {queue.length} left
                     </span>
                   </div>
 
@@ -1358,7 +1364,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                       onClick={handleAdvanceFromSpecialReveal}
                       className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1 cursor-pointer shrink-0"
                     >
-                      <span>NEXT [ENTER]</span>
+                      <span>NEXT</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   ) : (
@@ -1368,9 +1374,9 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                       <button
                         type="button"
                         onClick={handleEnterSubmit}
-                        className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer shrink-0"
+                        className="px-3 py-1.5 rounded-lg bg-accent-600 hover:bg-accent-500 text-white text-xs font-bold uppercase cursor-pointer shrink-0"
                       >
-                        ENTER ↵
+                        Submit
                       </button>
                     )
                   )}
@@ -1382,33 +1388,33 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                       type="button"
                       onClick={handleSkip}
                       disabled={queue.length <= 1}
-                      className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 text-xs transition cursor-pointer"
+                      className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-ink-800 hover:bg-ink-700 disabled:opacity-40 text-ink-200 text-xs uppercase transition cursor-pointer"
                     >
                       <FastForward className="w-3.5 h-3.5 text-amber-400" />
-                      SKIP [TAB]
+                      Skip
                     </button>
                   )}
                   <button
                     type="button"
                     onClick={handleGiveUpCurrent}
-                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-xs transition cursor-pointer"
+                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-xs uppercase transition cursor-pointer"
                   >
                     <Eye className="w-3.5 h-3.5" />
-                    {settings.mode === 'list-all' ? `GIVE UP (${queue.length})` : 'REVEAL'}
+                    {settings.mode === 'list-all' ? 'SHOW ANSWERS' : 'SHOW ANSWER'}
                   </button>
                 </div>
               </>
             ) : (
-              <div className="w-full flex items-center justify-between gap-3 bg-slate-950 border border-indigo-500/40 rounded-lg px-3.5 py-1.5">
+              <div className="w-full flex items-center justify-between gap-3 bg-ink-950 border border-accent-500/40 rounded-lg px-3.5 py-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400">TARGET:</span>
+                  <span className="text-xs text-ink-400">FIND:</span>
                   <span className="text-sm sm:text-base font-bold text-amber-300">
                     {currentTargetName}
                   </span>
-                  <span className="text-xs text-slate-500">(rem: {queue.length})</span>
+                  <span className="text-xs text-ink-500">({queue.length} left)</span>
                   {settings.mapDisplayStyle === 'minefield-no-outlines' && (
-                    <span className="px-1.5 py-0.5 rounded bg-rose-500/15 border border-rose-500/30 text-[10px] text-rose-300 font-bold">
-                      MINEFIELD
+                    <span className="px-1.5 py-0.5 rounded bg-rose-500/15 border border-rose-500/30 text-[10px] text-rose-300 font-bold uppercase">
+                      Hidden outlines
                     </span>
                   )}
                 </div>
@@ -1417,16 +1423,16 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                     type="button"
                     onClick={handleSkip}
                     disabled={queue.length <= 1}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-ink-800 hover:bg-ink-700 text-xs uppercase text-ink-200 cursor-pointer"
                   >
-                    SKIP
+                    Skip
                   </button>
                   <button
                     type="button"
                     onClick={handleGiveUpCurrent}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-xs text-rose-300 cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-xs uppercase text-rose-300 cursor-pointer"
                   >
-                    REVEAL
+                    Show answer
                   </button>
                 </div>
               </div>
@@ -1458,7 +1464,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                   >
                     <Undo2 className="w-3 h-3" />
                     {isFlagQuiz && activeFlagDisplayMode !== 'standard'
-                      ? 'MARK AS CORRECT (IDENTICAL / TYPO)'
+                      ? 'MARK AS CORRECT'
                       : 'IGNORE TYPO'}
                   </button>
                 )}
@@ -1471,13 +1477,13 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
             lastWrongSubmission &&
             feedbackBanner?.type === 'missed' &&
             lastWrongSubmission.targetFlagItem && (
-              <div className="max-w-4xl mx-auto bg-slate-950 border border-amber-500/40 rounded-lg p-3 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="max-w-4xl mx-auto bg-ink-950 border border-amber-500/40 rounded-lg p-3 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex flex-wrap items-center gap-6">
                   {lastWrongSubmission.guessedFlagItem ? (
                     <div className="flex items-center gap-3">
                       <div className="text-xs">
                         <div className="text-[10px] text-amber-300 font-bold">
-                          YOUR GUESS ({activeFlagDisplayMode.toUpperCase()})
+                          YOUR GUESS
                         </div>
                         <div className="font-bold text-white">
                           {lastWrongSubmission.guessedFlagItem.name}
@@ -1491,17 +1497,17 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                       />
                     </div>
                   ) : (
-                    <div className="text-xs text-slate-400">
+                    <div className="text-xs text-ink-400">
                       Guessed:{' '}
                       <strong className="text-white">"{lastWrongSubmission.typedText}"</strong>{' '}
                       (not matched to another flag in this quiz)
                     </div>
                   )}
 
-                  <div className="flex items-center gap-3 border-l border-slate-800 pl-4">
+                  <div className="flex items-center gap-3 border-l border-ink-800 pl-4">
                     <div className="text-xs">
                       <div className="text-[10px] text-emerald-400 font-bold">
-                        TARGET ({activeFlagDisplayMode.toUpperCase()})
+                        Answer
                       </div>
                       <div className="font-bold text-white">
                         {lastWrongSubmission.targetFlagItem.name}
@@ -1517,8 +1523,8 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                       <img
                         src={lastWrongSubmission.targetFlagItem.imageUrl}
                         alt={lastWrongSubmission.targetFlagItem.name}
-                        className="h-12 w-auto object-contain rounded border border-slate-700"
-                        title="Unaltered Target Flag"
+                        className="h-12 w-auto object-contain rounded border border-ink-700"
+                        title="Unaltered flag"
                       />
                     )}
                   </div>
@@ -1530,7 +1536,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                   className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  MARK AS CORRECT (IDENTICAL)
+                  MARK AS CORRECT
                 </button>
               </div>
             )}
@@ -1540,21 +1546,21 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
       {/* Main Content Area */}
       <div className="relative flex-1 w-full h-full overflow-y-auto">
         {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-950/90 z-30 text-xs text-slate-400">
-            Loading dataset...
+          <div className="absolute inset-0 flex items-center justify-center bg-ink-950/90 z-30 text-xs text-ink-400">
+            Loading quiz…
           </div>
         )}
 
         {error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-950 z-30 p-6">
-            <div className="max-w-md bg-slate-900 border border-rose-500/40 rounded-xl p-5 text-center">
-              <p className="text-rose-400 font-bold text-sm mb-2">ERR_LOAD_DATA</p>
-              <p className="text-xs text-slate-400 mb-4">{error}</p>
+          <div className="absolute inset-0 flex items-center justify-center bg-ink-950 z-30 p-6">
+            <div className="max-w-md bg-ink-900 border border-rose-500/40 rounded-xl p-5 text-center">
+              <p className="text-rose-400 font-bold text-sm mb-2">Couldn’t load this quiz</p>
+              <p className="text-xs text-ink-400 mb-4">{error}</p>
               <button
                 onClick={onExit}
-                className="px-4 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-xs"
+                className="px-4 py-1.5 rounded bg-ink-800 hover:bg-ink-700 text-xs"
               >
-                EXIT
+                Go back
               </button>
             </div>
           </div>
@@ -1562,32 +1568,34 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
         {/* PRE-GAME LAUNCH & OPTIONS MODAL */}
         {(!hasStarted || showOptionsPanel) && !loading && !error && (
-          <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 z-30 overflow-y-auto">
-            <div className="max-w-2xl w-full bg-slate-900 border border-slate-800 rounded-xl p-5 sm:p-6 shadow-2xl space-y-5 my-auto max-h-[90dvh] overflow-y-auto">
-              <div className="flex items-start justify-between gap-4 border-b border-slate-800 pb-3.5">
+          <div className="absolute inset-0 bg-ink-950/85 backdrop-blur-sm flex items-center justify-center p-4 z-30 overflow-y-auto">
+            <div className="max-w-2xl w-full bg-ink-900 border border-ink-800 rounded-xl p-5 sm:p-6 shadow-2xl space-y-5 my-auto max-h-[90dvh] overflow-y-auto">
+              <div className="flex items-start justify-between gap-4 border-b border-ink-800 pb-3.5">
                 <div>
-                  <div className="text-[11px] text-indigo-400 font-bold">
-                    QUIZ_LAUNCH_CONFIGURATION
+                  <div className="text-[11px] text-accent-400 font-bold">
+                    QUIZ SETUP
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
                     {quizFlagIcon && (
                       <img
                         src={quizFlagIcon}
                         alt=""
-                        className="w-6 h-4 object-cover rounded-[2px] border border-slate-700 shrink-0"
+                        className="w-6 h-4 object-cover rounded-[2px] border border-ink-700 shrink-0"
                       />
                     )}
-                    <h3 className="text-lg font-bold text-white">{quiz.title}</h3>
+                    <h3 className="text-lg font-bold text-white">
+                      {cleanQuizTitle(quiz.title)}
+                    </h3>
                   </div>
-                  <div className="text-xs text-slate-400 mt-0.5">
+                  <div className="text-xs text-ink-400 mt-0.5">
                     {totalCount} items •{' '}
                     {isTrackedRun ? (
                       <span className="text-emerald-400 font-bold">
-                        Matches Revision Tracked Preset
+                        MATCHES YOUR REVISION PRESET
                       </span>
                     ) : (
                       <span className="text-amber-300">
-                        Custom Variant (Untracked unless saved as Revision Preset below)
+                        Custom setup — not tracked unless you save it as a preset
                       </span>
                     )}
                   </div>
@@ -1596,9 +1604,9 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                 {hasStarted && (
                   <button
                     onClick={() => setShowOptionsPanel(false)}
-                    className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 cursor-pointer"
+                    className="px-2.5 py-1 rounded bg-ink-800 hover:bg-ink-700 text-xs text-ink-300 uppercase cursor-pointer"
                   >
-                    RESUME
+                    Resume
                   </button>
                 )}
               </div>
@@ -1607,11 +1615,11 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
                 <button
                   onClick={() => startOrRestartQuiz(practiceSubset)}
-                  className="flex-1 inline-flex items-center justify-center gap-2 py-3 px-5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-lg shadow-indigo-600/25 transition cursor-pointer"
+                  className="flex-1 inline-flex items-center justify-center gap-2 py-3 px-5 rounded-lg bg-accent-600 hover:bg-accent-500 text-white font-bold text-sm shadow-lg shadow-accent-600/25 transition cursor-pointer"
                 >
                   <Play className="w-4 h-4 fill-current" />
                   <span>
-                    {hasStarted ? 'RESTART WITH SELECTED MODE' : 'PLAY QUIZ'}
+                    {hasStarted ? 'RESTART WITH THESE SETTINGS' : 'PLAY QUIZ'}
                   </span>
                 </button>
 
@@ -1620,109 +1628,29 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                   className={`inline-flex items-center justify-center gap-1.5 py-3 px-4 rounded-lg border text-xs font-bold transition cursor-pointer ${
                     showOptionsPanel
                       ? 'bg-amber-500/20 border-amber-400 text-amber-300'
-                      : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+                      : 'bg-ink-800 border-ink-700 text-ink-200 hover:bg-ink-700'
                   }`}
                 >
                   <SlidersHorizontal className="w-4 h-4" />
-                  <span>{showOptionsPanel ? 'HIDE OPTIONS' : 'CUSTOMISE MODE / OPTIONS'}</span>
+                  <span>{showOptionsPanel ? 'HIDE OPTIONS' : 'CUSTOMISE SETUP'}</span>
                 </button>
               </div>
-
-              {/* Current Active Mode Summary Pill */}
-              <div className="bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2.5 text-xs flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <span className="text-slate-500">SELECTED_MODE: </span>
-                  {isSpecialCitiesQuiz ? (
-                    <>
-                      <strong className="text-white">
-                        TOP_{settings.specialCitiesCount || 5}_CITIES
-                      </strong>
-                      <span className="text-slate-600"> • </span>
-                      <strong className="text-amber-300">
-                        {(settings.showCapitalStar ?? true) ? 'CAPITAL_STAR_ON' : 'NO_STAR'}
-                      </strong>
-                      <span className="text-slate-600"> • </span>
-                      <strong className="text-sky-300">
-                        {(settings.scaleCitiesByPopulation ?? true)
-                          ? 'POP_SCALED'
-                          : 'UNIFORM_DOTS'}
-                      </strong>
-                      <span className="text-slate-600"> • </span>
-                      <strong className="text-emerald-300">
-                        {(settings.showScaleReference ?? true)
-                          ? 'SCALE_REF_ON'
-                          : 'SCALE_REF_OFF'}
-                      </strong>
-                    </>
-                  ) : (
-                    <>
-                      <strong className="text-white">
-                        {settings.mode === 'type-highlighted'
-                          ? 'TYPE_QUIZ'
-                          : settings.mode === 'list-all'
-                          ? 'LIST_ALL_QUIZ'
-                          : 'CLICK_QUIZ'}
-                      </strong>
-                      {(settings.mode === 'type-highlighted' ||
-                        settings.mode === 'list-all') && (
-                        <>
-                          <span className="text-slate-600"> • </span>
-                          <strong className="text-indigo-300">
-                            {settings.typingMatchMode === 'enter-submit'
-                              ? 'ENTER_SUBMIT'
-                              : 'INSTANT_AUTO_MATCH'}
-                          </strong>
-                        </>
-                      )}
-                      {!isFlagQuiz && settings.mode !== 'list-all' && (
-                        <>
-                          <span className="text-slate-600"> • </span>
-                          <strong className="text-emerald-300">
-                            {settings.mapDisplayStyle.toUpperCase()}
-                          </strong>
-                          {settings.mode === 'type-highlighted' &&
-                            settings.mapDisplayStyle === 'isolated-shape' &&
-                            settings.randomRotation && (
-                              <span className="ml-1.5 text-amber-300 font-bold">
-                                [RANDOM_ROTATION]
-                              </span>
-                            )}
-                        </>
-                      )}
-                      {isFlagQuiz && settings.mode === 'type-highlighted' && (
-                        <>
-                          <span className="text-slate-600"> • </span>
-                          <strong className="text-emerald-300">
-                            {activeFlagDisplayMode.toUpperCase()}
-                          </strong>
-                          {activeFlagDisplayMode === 'filtered' && (
-                            <span className="ml-1.5 text-amber-300">
-                              [{activeFlagFilters.join(' + ')}]
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Expanded Options Customization Section */}
+              {/* Expanded options */}
               {showOptionsPanel && (
-                <div className="space-y-4 pt-2 border-t border-slate-800 text-xs">
+                <div className="space-y-4 pt-2 border-t border-ink-800 text-xs">
                   {isSpecialCitiesQuiz ? (
-                    <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-4">
-                      <div className="text-[11px] text-slate-400 font-bold">
-                        SPECIAL_CITIES_QUIZ_PARAMETERS
+                    <div className="bg-ink-950 border border-ink-800 rounded-lg p-4 space-y-4">
+                      <div className="text-[11px] text-ink-400 font-bold uppercase">
+                        CITY MAP OPTIONS
                       </div>
 
-                      <div className="flex items-center justify-between gap-4 bg-slate-900 p-3 rounded-lg border border-slate-800">
+                      <div className="flex items-center justify-between gap-4 bg-ink-900 p-3 rounded-lg border border-ink-800">
                         <div>
                           <div className="font-bold text-white">
-                            1. TOP N LARGEST CITIES (N = {settings.specialCitiesCount || 5})
+                            Largest cities shown ({settings.specialCitiesCount || 5})
                           </div>
-                          <div className="text-[11px] text-slate-400">
-                            Number of largest cities plotted per country (3 to 12).
+                          <div className="text-[11px] text-ink-400">
+                            How many of the largest cities to plot for each country (3 to 12).
                           </div>
                         </div>
                         <input
@@ -1736,7 +1664,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                               specialCitiesCount: Number(e.target.value),
                             }))
                           }
-                          className="w-32 accent-indigo-500 cursor-pointer"
+                          className="w-32 accent-accent-500 cursor-pointer"
                         />
                       </div>
 
@@ -1752,13 +1680,13 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                           className={`p-3 rounded-lg border text-left transition cursor-pointer ${
                             settings.showCapitalStar ?? true
                               ? 'bg-amber-500/20 border-amber-400 text-white'
-                              : 'bg-slate-900 border-slate-800 text-slate-400'
+                              : 'bg-ink-900 border-ink-800 text-ink-400'
                           }`}
                         >
                           <div className="font-bold text-xs">
-                            ★ CAPITAL STAR: {(settings.showCapitalStar ?? true) ? 'ON' : 'OFF'}
+                            Capital star · {(settings.showCapitalStar ?? true) ? 'On' : 'Off'}
                           </div>
-                          <div className="text-[10px] text-slate-400 mt-1">
+                          <div className="text-[10px] text-ink-400 mt-1">
                             Marks the national capital with a star.
                           </div>
                         </button>
@@ -1774,14 +1702,14 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                           className={`p-3 rounded-lg border text-left transition cursor-pointer ${
                             settings.scaleCitiesByPopulation ?? true
                               ? 'bg-sky-500/20 border-sky-400 text-white'
-                              : 'bg-slate-900 border-slate-800 text-slate-400'
+                              : 'bg-ink-900 border-ink-800 text-ink-400'
                           }`}
                         >
                           <div className="font-bold text-xs">
-                            POPULATION SCALE:{' '}
-                            {(settings.scaleCitiesByPopulation ?? true) ? 'ON' : 'OFF'}
+                            Scale by population ·{' '}
+                            {(settings.scaleCitiesByPopulation ?? true) ? 'On' : 'Off'}
                           </div>
-                          <div className="text-[10px] text-slate-400 mt-1">
+                          <div className="text-[10px] text-ink-400 mt-1">
                             Scales city dot sizes by √population.
                           </div>
                         </button>
@@ -1797,14 +1725,14 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                           className={`p-3 rounded-lg border text-left transition cursor-pointer ${
                             settings.showScaleReference ?? true
                               ? 'bg-emerald-500/20 border-emerald-400 text-white'
-                              : 'bg-slate-900 border-slate-800 text-slate-400'
+                              : 'bg-ink-900 border-ink-800 text-ink-400'
                           }`}
                         >
                           <div className="font-bold text-xs">
-                            CORNER SCALE REF:{' '}
-                            {(settings.showScaleReference ?? true) ? 'ON' : 'OFF'}
+                            Scale reference ·{' '}
+                            {(settings.showScaleReference ?? true) ? 'On' : 'Off'}
                           </div>
-                          <div className="text-[10px] text-slate-400 mt-1">
+                          <div className="text-[10px] text-ink-400 mt-1">
                             Shows Hispaniola / Sicily / Corsica in corner at same scale.
                           </div>
                         </button>
@@ -1814,9 +1742,9 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                     <>
                       {/* 1. Structure: Type vs Click vs List All */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-2">
-                          <div className="text-[11px] text-slate-400 font-bold">
-                            1. QUIZ_STRUCTURE
+                        <div className="bg-ink-950 border border-ink-800 rounded-lg p-3 space-y-2">
+                          <div className="text-[11px] text-ink-400 font-bold uppercase">
+                            Answer format
                           </div>
                           <div className="flex gap-1.5">
                             <button
@@ -1830,13 +1758,13 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                                       : s.mapDisplayStyle,
                                 }))
                               }
-                              className={`flex-1 py-2 px-1.5 rounded font-bold cursor-pointer ${
+                              className={`flex-1 py-2 px-1.5 rounded font-bold uppercase cursor-pointer ${
                                 settings.mode === 'type-highlighted'
-                                  ? 'bg-indigo-600 text-white'
-                                  : 'bg-slate-900 text-slate-400 border border-slate-800'
+                                  ? 'bg-accent-600 text-white'
+                                  : 'bg-ink-900 text-ink-400 border border-ink-800'
                               }`}
                             >
-                              TYPE
+                              Type
                             </button>
                             <button
                               onClick={() =>
@@ -1849,13 +1777,13 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                                       : 'all-outlines',
                                 }))
                               }
-                              className={`flex-1 py-2 px-1.5 rounded font-bold cursor-pointer ${
+                              className={`flex-1 py-2 px-1.5 rounded font-bold uppercase cursor-pointer ${
                                 settings.mode === 'click-named'
-                                  ? 'bg-indigo-600 text-white'
-                                  : 'bg-slate-900 text-slate-400 border border-slate-800'
+                                  ? 'bg-accent-600 text-white'
+                                  : 'bg-ink-900 text-ink-400 border border-ink-800'
                               }`}
                             >
-                              CLICK
+                              Click
                             </button>
                             {!isFlagQuiz && (
                               <button
@@ -1866,13 +1794,13 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                                     mapDisplayStyle: 'all-outlines',
                                   }))
                                 }
-                                className={`flex-1 py-2 px-1.5 rounded font-bold cursor-pointer ${
+                                className={`flex-1 py-2 px-1.5 rounded font-bold uppercase cursor-pointer ${
                                   settings.mode === 'list-all'
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'bg-slate-900 text-slate-400 border border-slate-800'
+                                    ? 'bg-accent-600 text-white'
+                                    : 'bg-ink-900 text-ink-400 border border-ink-800'
                                 }`}
                               >
-                                LIST ALL
+                                List all
                               </button>
                             )}
                           </div>
@@ -1881,9 +1809,9 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                         {/* 2. Typing Match Mode */}
                         {(settings.mode === 'type-highlighted' ||
                           settings.mode === 'list-all') && (
-                          <div className="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-2">
-                            <div className="text-[11px] text-slate-400 font-bold">
-                              2. TYPING_EVALUATION
+                          <div className="bg-ink-950 border border-ink-800 rounded-lg p-3 space-y-2">
+                            <div className="text-[11px] text-ink-400 font-bold uppercase">
+                              Answer checking
                             </div>
                             <div className="flex gap-1.5">
                               <button
@@ -1893,10 +1821,10 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                                     typingMatchMode: 'enter-submit',
                                   }))
                                 }
-                                className={`flex-1 py-2 px-2 rounded font-bold cursor-pointer ${
+                                className={`flex-1 py-2 px-2 rounded font-bold uppercase cursor-pointer ${
                                   settings.typingMatchMode === 'enter-submit'
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'bg-slate-900 text-slate-400 border border-slate-800'
+                                    ? 'bg-accent-600 text-white'
+                                    : 'bg-ink-900 text-ink-400 border border-ink-800'
                                 }`}
                               >
                                 ENTER TO SUBMIT
@@ -1908,13 +1836,13 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                                     typingMatchMode: 'instant-match',
                                   }))
                                 }
-                                className={`flex-1 py-2 px-2 rounded font-bold cursor-pointer ${
+                                className={`flex-1 py-2 px-2 rounded font-bold uppercase cursor-pointer ${
                                   settings.typingMatchMode === 'instant-match'
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'bg-slate-900 text-slate-400 border border-slate-800'
+                                    ? 'bg-accent-600 text-white'
+                                    : 'bg-ink-900 text-ink-400 border border-ink-800'
                                 }`}
                               >
-                                INSTANT AUTO
+                                Instant match
                               </button>
                             </div>
                           </div>
@@ -1923,9 +1851,9 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
                       {/* 2B. Click Quiz Variants (Standard vs Minefield) */}
                       {!isFlagQuiz && settings.mode === 'click-named' && (
-                        <div className="bg-slate-950 border border-slate-800 rounded-lg p-3.5 space-y-2.5">
-                          <div className="text-[11px] text-slate-400 font-bold">
-                            2. CLICK_QUIZ_VARIANT
+                        <div className="bg-ink-950 border border-ink-800 rounded-lg p-3.5 space-y-2.5">
+                          <div className="text-[11px] text-ink-400 font-bold uppercase">
+                            Click mode
                           </div>
                           <div className="space-y-1.5">
                             {CLICK_GEOMETRY_MODES_INFO.map((opt) => (
@@ -1940,21 +1868,21 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                                 }
                                 className={`w-full p-2.5 rounded-lg text-left border transition flex items-center justify-between gap-3 cursor-pointer ${
                                   settings.mapDisplayStyle === opt.id
-                                    ? 'bg-indigo-600/20 border-indigo-400 text-white'
-                                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                                    ? 'bg-accent-600/20 border-accent-400 text-white'
+                                    : 'bg-ink-900 border-ink-800 text-ink-400 hover:text-ink-200'
                                 }`}
                               >
                                 <div>
                                   <div className="font-bold text-xs text-white">{opt.label}</div>
-                                  <div className="text-[11px] text-slate-400 mt-0.5">
+                                  <div className="text-[11px] text-ink-400 mt-0.5">
                                     {opt.shortDesc}
                                   </div>
                                 </div>
                                 <span
                                   className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${
                                     settings.mapDisplayStyle === opt.id
-                                      ? 'border-indigo-400 bg-indigo-500'
-                                      : 'border-slate-600'
+                                      ? 'border-accent-400 bg-accent-500'
+                                      : 'border-ink-600'
                                   }`}
                                 />
                               </button>
@@ -1965,10 +1893,10 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
                       {/* 3A. Map Geometry Modes (For Type Map Quizzes) */}
                       {!isFlagQuiz && settings.mode === 'type-highlighted' && (
-                        <div className="bg-slate-950 border border-slate-800 rounded-lg p-3.5 space-y-2.5">
+                        <div className="bg-ink-950 border border-ink-800 rounded-lg p-3.5 space-y-2.5">
                           <div className="flex items-center justify-between flex-wrap gap-2">
-                            <span className="text-[11px] text-slate-400 font-bold">
-                              3. MAP_GEOMETRY_DISPLAY_MODE
+                            <span className="text-[11px] text-ink-400 font-bold uppercase">
+                              Map style
                             </span>
 
                             {settings.mapDisplayStyle === 'isolated-shape' && (
@@ -1983,22 +1911,22 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-[11px] font-bold transition cursor-pointer ${
                                   settings.randomRotation
                                     ? 'bg-amber-500/20 border-amber-400 text-amber-300'
-                                    : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+                                    : 'bg-ink-900 border-ink-700 text-ink-400 hover:text-white'
                                 }`}
                               >
                                 <Compass className="w-3.5 h-3.5" />
                                 <span>
-                                  RANDOM ROTATION / ALIGNMENT:{' '}
-                                  {settings.randomRotation ? 'ON' : 'OFF'}
+                                  Random rotation ·{' '}
+                                  {settings.randomRotation ? 'On' : 'Off'}
                                                                 </span>
                               </button>
                             )}
 
                             {settings.mapDisplayStyle === 'unit-vectors' && (
-                              <div className="flex items-center gap-2 bg-slate-900 px-2.5 py-1 rounded border border-indigo-500/40">
-                                <span className="text-[11px] text-indigo-300 font-bold">
-                                  CLOSEST NEIGHBORS (N = {settings.vectorNeighborsCount} /{' '}
-                                  {maxNeighbors}):
+                              <div className="flex items-center gap-2 bg-ink-900 px-2.5 py-1 rounded border border-accent-500/40">
+                                <span className="text-[11px] text-accent-300 font-medium">
+                                  Neighbours ({settings.vectorNeighborsCount} of{' '}
+                                  {maxNeighbors})
                                 </span>
                                 <input
                                   type="range"
@@ -2011,7 +1939,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                                       vectorNeighborsCount: Number(e.target.value),
                                     }))
                                   }
-                                  className="w-28 accent-indigo-500 cursor-pointer"
+                                  className="w-28 accent-accent-500 cursor-pointer"
                                 />
                               </div>
                             )}
@@ -2030,21 +1958,21 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                                 }
                                 className={`w-full p-2.5 rounded-lg text-left border transition flex items-center justify-between gap-3 cursor-pointer ${
                                   settings.mapDisplayStyle === opt.id
-                                    ? 'bg-indigo-600/20 border-indigo-400 text-white'
-                                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                                    ? 'bg-accent-600/20 border-accent-400 text-white'
+                                    : 'bg-ink-900 border-ink-800 text-ink-400 hover:text-ink-200'
                                 }`}
                               >
                                 <div>
                                   <div className="font-bold text-xs text-white">{opt.label}</div>
-                                  <div className="text-[11px] text-slate-400 mt-0.5">
+                                  <div className="text-[11px] text-ink-400 mt-0.5">
                                     {opt.shortDesc}
                                   </div>
                                 </div>
                                 <span
                                   className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${
                                     settings.mapDisplayStyle === opt.id
-                                      ? 'border-indigo-400 bg-indigo-500'
-                                      : 'border-slate-600'
+                                      ? 'border-accent-400 bg-accent-500'
+                                      : 'border-ink-600'
                                   }`}
                                 />
                               </button>
@@ -2055,9 +1983,9 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
                       {/* 3B. Flag Display Modes & Multi-Select Layered Filters */}
                       {isFlagQuiz && settings.mode === 'type-highlighted' && (
-                        <div className="bg-slate-950 border border-slate-800 rounded-lg p-3.5 space-y-3">
-                          <div className="text-[11px] text-slate-400 font-bold">
-                            3. FLAG_DISPLAY_MODE
+                        <div className="bg-ink-950 border border-ink-800 rounded-lg p-3.5 space-y-3">
+                          <div className="text-[11px] text-ink-400 font-bold uppercase">
+                            Flag style
                           </div>
 
                           <div className="space-y-1.5">
@@ -2076,21 +2004,21 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                                 }
                                 className={`w-full p-2.5 rounded-lg text-left border transition flex items-center justify-between gap-3 cursor-pointer ${
                                   activeFlagDisplayMode === opt.id
-                                    ? 'bg-indigo-600/20 border-indigo-400 text-white'
-                                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                                    ? 'bg-accent-600/20 border-accent-400 text-white'
+                                    : 'bg-ink-900 border-ink-800 text-ink-400 hover:text-ink-200'
                                 }`}
                               >
                                 <div>
                                   <div className="font-bold text-xs text-white">{opt.label}</div>
-                                  <div className="text-[11px] text-slate-400 mt-0.5">
+                                  <div className="text-[11px] text-ink-400 mt-0.5">
                                     {opt.shortDesc}
                                   </div>
                                 </div>
                                 <span
                                   className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${
                                     activeFlagDisplayMode === opt.id
-                                      ? 'border-indigo-400 bg-indigo-500'
-                                      : 'border-slate-600'
+                                      ? 'border-accent-400 bg-accent-500'
+                                      : 'border-ink-600'
                                   }`}
                                 />
                               </button>
@@ -2098,12 +2026,12 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                           </div>
 
                           {activeFlagDisplayMode === 'filtered' && (
-                            <div className="pt-2.5 border-t border-slate-800 space-y-2">
+                            <div className="pt-2.5 border-t border-ink-800 space-y-2">
                               <div className="flex items-center justify-between">
                                 <span className="text-[11px] text-amber-300 font-bold">
-                                  LAYERED_FILTERS (MULTI-SELECT — MUTUALLY EXCLUSIVE FILTERS AUTO-LOCK)
+                                  Layered filters
                                 </span>
-                                <span className="text-[10px] text-slate-400">
+                                <span className="text-[10px] text-ink-400">
                                   {activeFlagFilters.length} active
                                 </span>
                               </div>
@@ -2129,8 +2057,8 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                                         isSelected
                                           ? 'bg-amber-500/20 border-amber-400 text-white cursor-pointer'
                                           : conflictId
-                                          ? 'bg-slate-950 border-slate-900 text-slate-600 opacity-50 cursor-not-allowed'
-                                          : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-600 cursor-pointer'
+                                          ? 'bg-ink-950 border-ink-900 text-ink-600 opacity-50 cursor-not-allowed'
+                                          : 'bg-ink-900 border-ink-800 text-ink-300 hover:border-ink-600 cursor-pointer'
                                       }`}
                                     >
                                       <div className="flex items-center justify-between gap-1">
@@ -2138,16 +2066,16 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                                           {fMeta.label}
                                         </span>
                                         {isSelected ? (
-                                          <span className="px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 font-bold text-[9px]">
-                                            ACTIVE
+                                          <span className="px-1.5 py-0.2 rounded bg-amber-400 text-ink-950 font-bold text-[9px]">
+                                            On
                                           </span>
                                         ) : conflictMeta ? (
-                                          <span className="px-1.5 py-0.2 rounded bg-slate-900 border border-slate-800 text-rose-400 text-[9px]">
-                                            EXCLUDED BY {conflictMeta.label}
+                                          <span className="px-1.5 py-0.2 rounded bg-ink-900 border border-ink-800 text-rose-400 text-[9px]">
+                                            Not with {conflictMeta.label}
                                           </span>
                                         ) : null}
                                       </div>
-                                      <div className="text-[10px] text-slate-400 leading-tight">
+                                      <div className="text-[10px] text-ink-400 leading-tight">
                                         {fMeta.shortDesc}
                                       </div>
                                     </button>
@@ -2162,17 +2090,18 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                   )}
 
                   {/* Revision Tracked Preset Control */}
-                  <div className="pt-2 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-[11px] text-slate-400">
-                      REVISION_TRACKED_PRESET:{' '}
-                      <strong className="text-slate-200">
-                        {isSpecialCitiesQuiz
-                          ? `Top ${trackedPreset.specialCitiesCount || 5} Cities`
-                          : `${trackedPreset.mode} / ${trackedPreset.typingMatchMode} / ${
-                              isFlagQuiz
-                                ? trackedPreset.flagDisplayMode || 'standard'
-                                : trackedPreset.mapDisplayStyle
-                            }`}
+                  <div className="pt-2 border-t border-ink-800 flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-[11px] text-ink-400">
+                      REVISION PRESET:{' '}
+                      <strong className="text-ink-200">
+                        {isMatchingTrackedPreset(
+                          settings,
+                          trackedPreset,
+                          isFlagQuiz,
+                          isSpecialCitiesQuiz
+                        )
+                          ? 'IN USE'
+                          : 'CUSTOM SETUP'}
                       </strong>
                     </div>
 
@@ -2190,7 +2119,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] cursor-pointer"
                       >
                         <BookmarkCheck className="w-3.5 h-3.5" />
-                        SET CURRENT MODE AS REVISION TRACKED PRESET
+                        SAVE AS REVISION PRESET
                       </button>
                     )}
                   </div>
@@ -2218,7 +2147,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
           <div className="max-w-5xl mx-auto p-6 flex flex-col items-center justify-center min-h-full">
             {settings.mode === 'type-highlighted' ? (
               currentFlagItem && !isFinished ? (
-                <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-xl p-8 flex flex-col items-center justify-center shadow-2xl gap-3">
+                <div className="w-full max-w-2xl bg-ink-900 border border-ink-800 rounded-xl p-8 flex flex-col items-center justify-center shadow-2xl gap-3">
                   <FlagVisualRenderer
                     item={currentFlagItem}
                     displayMode={activeFlagDisplayMode}
@@ -2226,8 +2155,8 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                     size="large"
                   />
                   {activeFlagDisplayMode === 'filtered' && activeFlagFilters.length > 0 && (
-                    <div className="text-[11px] text-slate-500">
-                      ACTIVE_FILTERS: {activeFlagFilters.join(' + ').toUpperCase()}
+                    <div className="text-[11px] text-ink-500">
+                      Filters: {activeFlagFilters.join(' + ').replace(/-/g, ' ')}
                     </div>
                   )}
                 </div>
@@ -2248,7 +2177,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                             ? 'bg-emerald-500/15 border-emerald-500/40 opacity-50'
                             : status === 'missed'
                             ? 'bg-rose-500/15 border-rose-500/40'
-                            : 'bg-slate-900 border-slate-800 hover:border-slate-600'
+                            : 'bg-ink-900 border-ink-800 hover:border-ink-600'
                         }`}
                       >
                         <div className="h-14 w-full flex items-center justify-center">
@@ -2260,7 +2189,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                           />
                         </div>
                         {(status === 'correct' || status === 'missed' || isFinished) && (
-                          <div className="text-[10px] truncate w-full text-center font-bold text-slate-300">
+                          <div className="text-[10px] truncate w-full text-center font-bold text-ink-300">
                             {item.name}
                           </div>
                         )}
@@ -2278,12 +2207,12 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
           !loading &&
           settings.mode === 'type-highlighted' &&
           settings.mapDisplayStyle === 'isolated-shape' && (
-            <div className="w-full h-full flex items-center justify-center p-6 bg-slate-950">
-              <div className="max-w-2xl w-full bg-slate-900 border border-slate-800 rounded-xl p-6 flex flex-col items-center justify-center shadow-2xl relative">
+            <div className="w-full h-full flex items-center justify-center p-6 bg-ink-950">
+              <div className="max-w-2xl w-full bg-ink-900 border border-ink-800 rounded-xl p-6 flex flex-col items-center justify-center shadow-2xl relative">
                 {settings.randomRotation && (
                   <div className="absolute top-3 right-3 px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-[10px] text-amber-300 font-bold flex items-center gap-1">
                     <Compass className="w-3 h-3" />
-                    RANDOM_ROTATION_ON
+                    Random rotation
                   </div>
                 )}
                 <svg
@@ -2310,8 +2239,8 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
           !loading &&
           settings.mode === 'type-highlighted' &&
           settings.mapDisplayStyle === 'unit-vectors' && (
-            <div className="w-full h-full flex items-center justify-center p-4 bg-slate-950">
-              <div className="max-w-3xl w-full bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center shadow-2xl">
+            <div className="w-full h-full flex items-center justify-center p-4 bg-ink-950">
+              <div className="max-w-3xl w-full bg-ink-900 border border-ink-800 rounded-xl p-4 flex flex-col items-center justify-center shadow-2xl">
                 <svg
                   viewBox="-340 -250 680 500"
                   className="w-full h-auto max-h-[72dvh] overflow-visible"
@@ -2483,7 +2412,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                     }
 
                     if (!feature) return {};
-                    const regionName = getFeatureName(feature);
+                    const regionName = getFeatureName(feature, quiz.nameProperty);
                     const status = regionStatuses[regionName]?.state;
                     const isTarget =
                       hasStarted &&
@@ -2672,7 +2601,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                   }}
                   onEachFeature={(feature, layer) => {
                     if (format !== 'map-polygon') return;
-                    const regionName = getFeatureName(feature);
+                    const regionName = getFeatureName(feature, quiz.nameProperty);
                     const status = regionStatuses[regionName]?.state;
 
                     if (
@@ -2750,7 +2679,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                         pathOptions={{
                           fillColor,
                           fillOpacity: 0.95,
-                          color: isTarget ? '#ffffff' : '#0f172a',
+                          color: isTarget ? '#ffffff' : '#0a0f16',
                           weight: isTarget ? 2.5 : 1.5,
                         }}
                         eventHandlers={{
@@ -2770,14 +2699,16 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
         {/* Technical Run Summary Overlay */}
         {isFinished && (
-          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-30">
-            <div className="max-w-lg w-full bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="absolute inset-0 bg-ink-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-30">
+            <div className="max-w-lg w-full bg-ink-900 border border-ink-800 rounded-xl p-5 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-ink-800 pb-3">
                 <div>
-                  <div className="text-xs text-slate-400">
-                    {isTrackedRun ? 'RUN_COMPLETE [LOGGED]' : 'PRACTICE_COMPLETE [UNTRACKED]'}
+                  <div className="text-xs text-ink-400">
+                    {isTrackedRun ? 'RUN COMPLETE' : 'PRACTICE COMPLETE'}
                   </div>
-                  <h3 className="text-base font-bold text-white">{quiz.title}</h3>
+                  <h3 className="text-base font-bold text-white">
+                    {cleanQuizTitle(quiz.title)}
+                  </h3>
                 </div>
                 <span
                   className={`px-2.5 py-1 rounded text-sm font-bold ${
@@ -2791,19 +2722,19 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
               </div>
 
               <div className="grid grid-cols-3 gap-2.5">
-                <div className="bg-slate-950 border border-slate-800 rounded-lg p-2.5">
-                  <div className="text-[11px] text-slate-500">ACCURACY</div>
+                <div className="bg-ink-950 border border-ink-800 rounded-lg p-2.5">
+                  <div className="text-[11px] text-ink-500">ACCURACY</div>
                   <div className="text-lg font-bold text-white">{currentAccuracy}%</div>
                 </div>
-                <div className="bg-slate-950 border border-slate-800 rounded-lg p-2.5">
-                  <div className="text-[11px] text-slate-500">COUNT</div>
+                <div className="bg-ink-950 border border-ink-800 rounded-lg p-2.5">
+                  <div className="text-[11px] text-ink-500">CORRECT</div>
                   <div className="text-lg font-bold text-white">
                     {correctCount}/{totalCount}
                   </div>
                 </div>
-                <div className="bg-slate-950 border border-slate-800 rounded-lg p-2.5">
-                  <div className="text-[11px] text-slate-500">TIME</div>
-                  <div className="text-lg font-bold text-indigo-400">
+                <div className="bg-ink-950 border border-ink-800 rounded-lg p-2.5">
+                  <div className="text-[11px] text-ink-500">TIME</div>
+                  <div className="text-lg font-bold text-accent-400">
                     {formatClock(elapsedSeconds)}
                   </div>
                 </div>
@@ -2813,7 +2744,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                 <div className="flex flex-col gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-xs">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-amber-200">
-                      Last miss: <strong>{lastWrongSubmission.targetName}</strong> (typed "
+                      LAST MISS: <strong>{lastWrongSubmission.targetName}</strong> (typed "
                       {lastWrongSubmission.typedText}")
                     </span>
                     <button
@@ -2822,7 +2753,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                     >
                       <Undo2 className="w-3.5 h-3.5" />
                       {isFlagQuiz && activeFlagDisplayMode !== 'standard'
-                        ? 'MARK AS CORRECT (IDENTICAL)'
+                        ? 'MARK AS CORRECT'
                         : 'IGNORE TYPO'}
                     </button>
                   </div>
@@ -2833,7 +2764,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                       <div className="flex items-center gap-4 pt-2 border-t border-amber-500/20">
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] text-amber-300">
-                            Guessed ({lastWrongSubmission.guessedFlagItem.name}):
+                            GUESSED ({lastWrongSubmission.guessedFlagItem.name}):
                           </span>
                           <FlagVisualRenderer
                             item={lastWrongSubmission.guessedFlagItem}
@@ -2844,7 +2775,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] text-emerald-300">
-                            Target ({lastWrongSubmission.targetFlagItem.name}):
+                            ANSWER ({lastWrongSubmission.targetFlagItem.name}):
                           </span>
                           <FlagVisualRenderer
                             item={lastWrongSubmission.targetFlagItem}
@@ -2859,9 +2790,9 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
               )}
 
               {missedCount > 0 && (
-                <div className="bg-slate-950 border border-rose-500/30 rounded-lg p-3">
+                <div className="bg-ink-950 border border-rose-500/30 rounded-lg p-3">
                   <div className="text-[11px] text-rose-400 mb-1.5">
-                    MISSED [{missedCount}]:
+                    MISSED ({missedCount})
                   </div>
                   <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto">
                     {Object.values(regionStatuses)
@@ -2882,17 +2813,17 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                 {onNextInRevisionQueue && (
                   <button
                     onClick={onNextInRevisionQueue}
-                    className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition cursor-pointer"
+                    className="w-full py-2.5 rounded-lg bg-accent-600 hover:bg-accent-500 text-white font-bold text-xs transition cursor-pointer"
                   >
-                    NEXT IN REVISION QUEUE →
+                    NEXT IN REVISION QUEUE
                   </button>
                 )}
 
                 <button
                   onClick={() => startOrRestartQuiz(null)}
-                  className="flex-1 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer"
+                  className="flex-1 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 text-ink-200 text-xs font-semibold transition cursor-pointer"
                 >
-                  REPEAT FULL
+                  REPEAT FULL QUIZ
                 </button>
 
                 <button
@@ -2900,9 +2831,9 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                     setIsFinished(false);
                     setShowOptionsPanel(true);
                   }}
-                  className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold transition cursor-pointer"
+                  className="px-3 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 text-amber-300 text-xs font-semibold transition cursor-pointer"
                 >
-                  CHANGE MODE
+                  CHANGE SETUP
                 </button>
 
                 {missedCount > 0 && (
@@ -2915,15 +2846,15 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                     }}
                     className="flex-1 py-2 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 text-xs font-semibold transition cursor-pointer"
                   >
-                    DRILL MISSED [{missedCount}]
+                    PRACTICE MISSED ({missedCount})
                   </button>
                 )}
 
                 <button
                   onClick={onExit}
-                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-xs transition cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 text-ink-400 hover:text-white text-xs uppercase transition cursor-pointer"
                 >
-                  RETURN
+                  Return
                 </button>
               </div>
             </div>

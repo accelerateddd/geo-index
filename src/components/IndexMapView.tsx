@@ -1,10 +1,15 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { MapContainer, GeoJSON, CircleMarker, Tooltip, useMapEvents } from 'react-leaflet';
-import { MinusCircle, Play, PlusCircle, X } from 'lucide-react';
+import { Check, Play, Plus, X } from 'lucide-react';
 import type { QuizAttempt, QuizConfig } from '../types/quiz';
 import { computeQuizStats } from '../utils/revisionAlgorithm';
 import { computeFeaturesBBox } from '../utils/geometry';
 import { getCountryFlagIconByName, getQuizFlagIconUrl } from '../utils/flagIcons';
+import {
+  categoryLabel,
+  cleanQuizTitle,
+  itemCountLabel,
+} from '../utils/quizDisplay';
 
 interface IndexMapViewProps {
   quizzes: QuizConfig[];
@@ -40,13 +45,35 @@ function ZoomTracker({ onZoomChange }: { onZoomChange: (z: number) => void }) {
   return null;
 }
 
-export const IndexMapView: React.FC<IndexMapViewProps> = ({
+function getCountryKey(feature: GeoJSON.Feature): string {
+  const properties = feature.properties || {};
+  return String(properties.ADM0_A3 || properties.ISO_A3 || properties.NAME || '');
+}
+
+function getQuizzesForCountryFeature(
+  feature: GeoJSON.Feature,
+  quizzesByIso: Record<string, QuizConfig[]>
+): QuizConfig[] {
+  const properties = feature.properties || {};
+  const adm0 = String(properties.ADM0_A3 || '').toUpperCase();
+  const iso3 = String(properties.ISO_A3 || '').toUpperCase();
+  const name = String(properties.NAME || '').toLowerCase();
+
+  return (
+    (adm0 && quizzesByIso[adm0]) ||
+    (iso3 && quizzesByIso[iso3]) ||
+    (name && quizzesByIso[name]) ||
+    []
+  );
+}
+
+export function IndexMapView({
   quizzes,
   attempts,
   enrolledIds,
   onStartQuiz,
   onToggleEnroll,
-}) => {
+}: IndexMapViewProps) {
   const [worldGeoJson, setWorldGeoJson] = useState<GeoJSON.FeatureCollection | null>(
     cachedCountries
   );
@@ -67,40 +94,21 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
     }
   }, []);
 
-  // Group quizzes by ISO-3 code (from tags) AND by countryOrRegion name
+  // Group quizzes by ISO-3 code (from tags) and by countryOrRegion name
   const quizzesByIso = useMemo(() => {
     const map: Record<string, QuizConfig[]> = {};
-    for (const q of quizzes) {
-      const isoTag = q.tags.find((t) => /^[A-Z]{3}$/.test(t));
+    for (const quiz of quizzes) {
+      const isoTag = quiz.tags.find((tag) => /^[A-Z]{3}$/.test(tag));
       if (isoTag) {
         if (!map[isoTag]) map[isoTag] = [];
-        map[isoTag].push(q);
+        map[isoTag].push(quiz);
       }
-      const nameKey = q.countryOrRegion.toLowerCase();
+      const nameKey = quiz.countryOrRegion.toLowerCase();
       if (!map[nameKey]) map[nameKey] = [];
-      if (!map[nameKey].includes(q)) map[nameKey].push(q);
+      if (!map[nameKey].includes(quiz)) map[nameKey].push(quiz);
     }
     return map;
   }, [quizzes]);
-
-  function getQuizzesForCountryFeature(feature: GeoJSON.Feature): QuizConfig[] {
-    const p = feature.properties || {};
-    const adm0 = String(p.ADM0_A3 || '').toUpperCase();
-    const iso3 = String(p.ISO_A3 || '').toUpperCase();
-    const name = String(p.NAME || '').toLowerCase();
-
-    const list =
-      (adm0 && quizzesByIso[adm0]) ||
-      (iso3 && quizzesByIso[iso3]) ||
-      (name && quizzesByIso[name]) ||
-      [];
-    return list;
-  }
-
-  function getCountryKey(feature: GeoJSON.Feature): string {
-    const p = feature.properties || {};
-    return String(p.ADM0_A3 || p.ISO_A3 || p.NAME || '');
-  }
 
   // Compute small-country dot markers so microstates/islands are easy to click when zoomed out
   const smallCountryDots = useMemo(() => {
@@ -111,34 +119,31 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
       lat: number;
       lng: number;
       quizCount: number;
-      span: number;
     }> = [];
 
-    for (const f of worldGeoJson.features) {
-      const countryQuizzes = getQuizzesForCountryFeature(f);
+    for (const feature of worldGeoJson.features) {
+      const countryQuizzes = getQuizzesForCountryFeature(feature, quizzesByIso);
       if (countryQuizzes.length === 0) continue;
 
-      const bbox = computeFeaturesBBox([f]);
+      const bbox = computeFeaturesBBox([feature]);
       const span = Math.max(bbox.maxLon - bbox.minLon, bbox.maxLat - bbox.minLat);
-      const p = f.properties || {};
+      const properties = feature.properties || {};
       const lat =
-        typeof p.LABEL_Y === 'number'
-          ? p.LABEL_Y
+        typeof properties.LABEL_Y === 'number'
+          ? properties.LABEL_Y
           : (bbox.minLat + bbox.maxLat) / 2;
       const lng =
-        typeof p.LABEL_X === 'number'
-          ? p.LABEL_X
+        typeof properties.LABEL_X === 'number'
+          ? properties.LABEL_X
           : (bbox.minLon + bbox.maxLon) / 2;
 
-      // Countries with small angular span get a clickable dot when zoomed out
       if (span < 4.5) {
         dots.push({
-          key: getCountryKey(f),
-          name: String(p.NAME || getCountryKey(f)),
+          key: getCountryKey(feature),
+          name: String(properties.NAME || getCountryKey(feature)),
           lat,
           lng,
           quizCount: countryQuizzes.length,
-          span,
         });
       }
     }
@@ -148,14 +153,15 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
   const selectedFeature = useMemo(() => {
     if (!worldGeoJson || !selectedCountryKey) return null;
     return (
-      worldGeoJson.features.find((f) => getCountryKey(f) === selectedCountryKey) ||
-      null
+      worldGeoJson.features.find(
+        (feature) => getCountryKey(feature) === selectedCountryKey
+      ) || null
     );
   }, [worldGeoJson, selectedCountryKey]);
 
   const selectedCountryQuizzes = useMemo(() => {
     if (!selectedFeature) return [];
-    return getQuizzesForCountryFeature(selectedFeature);
+    return getQuizzesForCountryFeature(selectedFeature, quizzesByIso);
   }, [selectedFeature, quizzesByIso]);
 
   const selectedCountryName = useMemo(() => {
@@ -164,11 +170,11 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
   }, [selectedFeature, selectedCountryKey]);
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col lg:flex-row h-[72dvh] font-mono">
-      {/* Interactive World Map */}
+    <div className="bg-ink-900 border border-ink-800 rounded-xl overflow-hidden flex flex-col lg:flex-row h-[72dvh] font-mono">
+      {/* Interactive world map */}
       <div className="relative flex-1 h-full">
         {!worldGeoJson ? (
-          <div className="w-full h-full flex items-center justify-center text-xs text-slate-400">
+          <div className="w-full h-full flex items-center justify-center text-xs text-ink-400">
             Loading world map index...
           </div>
         ) : (
@@ -188,7 +194,7 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
               style={(feature) => {
                 if (!feature) return {};
                 const key = getCountryKey(feature);
-                const associated = getQuizzesForCountryFeature(feature);
+                const associated = getQuizzesForCountryFeature(feature, quizzesByIso);
                 const isSelected = key === selectedCountryKey;
                 const hasQuizzes = associated.length > 0;
 
@@ -220,16 +226,20 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
               onEachFeature={(feature, layer) => {
                 const key = getCountryKey(feature);
                 const name = String(feature.properties?.NAME || key);
-                const associated = getQuizzesForCountryFeature(feature);
+                const associated = getQuizzesForCountryFeature(feature, quizzesByIso);
 
-                layer.bindTooltip(
-                  `${name} (${associated.length} quiz${associated.length === 1 ? '' : 'zes'})`,
-                  {
-                    sticky: true,
-                    direction: 'top',
-                    className: 'region-tooltip',
-                  }
-                );
+                if (associated.length > 0) {
+                  layer.bindTooltip(
+                    `${name} (${associated.length} ${
+                      associated.length === 1 ? 'quiz' : 'quizzes'
+                    })`,
+                    {
+                      sticky: true,
+                      direction: 'top',
+                      className: 'region-tooltip',
+                    }
+                  );
+                }
 
                 layer.on({
                   click: () => {
@@ -241,7 +251,7 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
               }}
             />
 
-            {/* Clickable Dots for Small Countries & Islands when zoomed out */}
+            {/* Clickable dots for small countries and islands when zoomed out */}
             {zoomLevel <= 5 &&
               smallCountryDots.map((dot) => {
                 const isSelected = dot.key === selectedCountryKey;
@@ -269,22 +279,22 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
           </MapContainer>
         )}
 
-        <div className="absolute bottom-3 left-3 bg-slate-950/90 border border-slate-800 rounded px-2.5 py-1.5 text-[11px] text-slate-400 pointer-events-none z-10">
+        <div className="absolute bottom-3 left-3 bg-ink-950/90 border border-ink-800 rounded px-2.5 py-1.5 text-[11px] text-ink-400 pointer-events-none z-10">
           Click any highlighted country or dot to view its quizzes
         </div>
       </div>
 
-      {/* Side Panel: Quizzes for Selected Country */}
-      <div className="w-full lg:w-96 border-t lg:border-t-0 lg:border-l border-slate-800 bg-slate-950 flex flex-col h-64 lg:h-full">
-        <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+      {/* Side panel: quizzes for the selected country */}
+      <div className="w-full lg:w-96 border-t lg:border-t-0 lg:border-l border-ink-800 bg-ink-950 flex flex-col h-64 lg:h-full">
+        <div className="px-4 py-3 border-b border-ink-800 flex items-center justify-between">
           <div>
-            <div className="text-[10px] text-slate-500">SELECTED_COUNTRY</div>
+            <div className="text-[10px] text-ink-500">SELECTED COUNTRY</div>
             <div className="text-sm font-bold text-white flex items-center gap-2 mt-0.5">
               {selectedCountryKey && getCountryFlagIconByName(selectedCountryName) && (
                 <img
                   src={getCountryFlagIconByName(selectedCountryName)!}
                   alt=""
-                  className="w-5 h-3.5 object-cover rounded-[2px] border border-slate-700 shrink-0"
+                  className="w-5 h-3.5 object-cover rounded-[2px] border border-ink-700 shrink-0"
                 />
               )}
               <span>{selectedCountryKey ? selectedCountryName : 'NONE SELECTED'}</span>
@@ -292,21 +302,22 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
           </div>
           {selectedCountryKey && (
             <button
+              type="button"
               onClick={() => setSelectedCountryKey(null)}
-              className="p-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+              className="p-1 rounded bg-ink-900 hover:bg-ink-800 text-ink-400 hover:text-white cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto divide-y divide-slate-800/80">
+        <div className="flex-1 overflow-y-auto divide-y divide-ink-800/80">
           {!selectedCountryKey ? (
-            <div className="p-6 text-xs text-slate-500 text-center">
+            <div className="p-6 text-xs text-ink-500 text-center">
               Select a country on the map to inspect and launch its associated quizzes.
             </div>
           ) : selectedCountryQuizzes.length === 0 ? (
-            <div className="p-6 text-xs text-slate-500 text-center">
+            <div className="p-6 text-xs text-ink-500 text-center">
               No quizzes matching current filter for {selectedCountryName}.
             </div>
           ) : (
@@ -316,7 +327,10 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
               const flagIconUrl = getQuizFlagIconUrl(quiz);
 
               return (
-                <div key={quiz.id} className="p-3.5 space-y-2 hover:bg-slate-900/60 transition">
+                <div
+                  key={quiz.id}
+                  className="p-3.5 space-y-2 hover:bg-ink-900/60 transition"
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <div className="text-xs font-bold text-white flex items-center gap-1.5">
@@ -324,66 +338,65 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
                           <img
                             src={flagIconUrl}
                             alt=""
-                            className="w-4 h-3 object-cover rounded-[2px] border border-slate-700 shrink-0"
+                            className="w-4 h-3 object-cover rounded-[2px] border border-ink-700 shrink-0"
                             loading="lazy"
                           />
                         )}
-                        <span>{quiz.title}</span>
+                        <span>{cleanQuizTitle(quiz.title)}</span>
                       </div>
                       <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                        <span className="text-[10px] text-slate-500">
-                          [{quiz.totalItems} items]
+                        <span className="text-[10px] text-ink-500">
+                          [{itemCountLabel(quiz)}]
                         </span>
-                        {quiz.tags.map((t) => (
-                          <span
-                            key={t}
-                            className="px-1.5 py-0.2 rounded bg-slate-900 border border-slate-800 text-[10px] text-slate-400"
-                          >
-                            {t}
-                          </span>
-                        ))}
+                        <span className="px-1.5 py-0.2 rounded bg-ink-900 border border-ink-800 text-[10px] text-ink-400">
+                          {categoryLabel(quiz.category)}
+                        </span>
                       </div>
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between pt-1">
-                    <div className="text-[11px] text-slate-500 space-x-2">
-                      <span>
-                        100%×: <strong className="text-emerald-400">{stats.perfectCount}</strong>
-                      </span>
-                      <span>
-                        LAST:{' '}
-                        <strong className="text-slate-300">
-                          {stats.lastScorePercent !== null ? `${stats.lastScorePercent}%` : '—'}
-                        </strong>
-                      </span>
+                    <div className="text-[11px] text-ink-500">
+                      LAST:{' '}
+                      <strong className="text-ink-300">
+                        {stats.lastScorePercent !== null
+                          ? `${stats.lastScorePercent}%`
+                          : '—'}
+                      </strong>
                     </div>
 
                     <div className="flex items-center gap-1.5">
                       <button
+                        type="button"
                         onClick={() => onToggleEnroll(quiz.id)}
+                        aria-label={
+                          isEnrolled
+                            ? `Remove ${cleanQuizTitle(quiz.title)} from revision queue`
+                            : `Add ${cleanQuizTitle(quiz.title)} to revision queue`
+                        }
                         className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold border transition cursor-pointer ${
                           isEnrolled
                             ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
-                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                            : 'bg-ink-900 border-ink-800 text-ink-400 hover:text-white'
                         }`}
                       >
                         {isEnrolled ? (
                           <>
-                            <MinusCircle className="w-3 h-3" />
+                            <Check className="w-3 h-3" />
                             QUEUE
                           </>
                         ) : (
                           <>
-                            <PlusCircle className="w-3 h-3" />
+                            <Plus className="w-3 h-3" />
                             +QUEUE
                           </>
                         )}
                       </button>
 
                       <button
+                        type="button"
                         onClick={() => onStartQuiz(quiz)}
-                        className="inline-flex items-center gap-1 px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold transition cursor-pointer"
+                        className="inline-flex items-center gap-1 px-3 py-1 rounded bg-accent-600 hover:bg-accent-500 text-white text-[11px] font-bold transition cursor-pointer"
                       >
                         <Play className="w-3 h-3 fill-current" />
                         PLAY
@@ -398,4 +411,4 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
       </div>
     </div>
   );
-};
+}
