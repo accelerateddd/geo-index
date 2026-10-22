@@ -170,8 +170,7 @@
       "stateOrRegion": "Benin",
       "population": 294000,
       "aliases": [
-        "Porto Novo",
-        "Cotonou"
+        "Porto Novo"
       ]
     },
     {
@@ -182,13 +181,13 @@
       "population": 115000
     },
     {
-      "name": "La Paz",
-      "lat": -16.4897,
-      "lng": -68.1193,
+      "name": "Sucre",
+      "lat": -19.0431,
+      "lng": -65.2592,
       "stateOrRegion": "Bolivia",
-      "population": 1920000,
+      "population": 360000,
       "aliases": [
-        "Sucre"
+        "La Paz"
       ]
     },
     {
@@ -445,12 +444,13 @@
       "population": 1111000
     },
     {
-      "name": "Malabo",
-      "lat": 3.7504,
-      "lng": 8.7371,
+      "name": "Ciudad de la Paz",
+      "lat": 1.589,
+      "lng": 10.822,
       "stateOrRegion": "Equatorial Guinea",
-      "population": 297000,
+      "population": 15000,
       "aliases": [
+        "Oyala",
         "Ciudad de la Paz"
       ]
     },
@@ -642,7 +642,10 @@
       "lat": -6.2088,
       "lng": 106.8456,
       "stateOrRegion": "Indonesia",
-      "population": 11075000
+      "population": 11075000,
+      "aliases": [
+        "Nusantara"
+      ]
     },
     {
       "name": "Tehran",
@@ -689,7 +692,9 @@
       "stateOrRegion": "Ivory Coast",
       "population": 372000,
       "aliases": [
-        "Abidjan"
+        "Abidjan",
+        "Cote d'Ivoire",
+        "Côte d'Ivoire"
       ]
     },
     {
@@ -1366,14 +1371,15 @@
       "population": 6714000
     },
     {
-      "name": "Colombo",
-      "lat": 6.9271,
-      "lng": 79.8612,
+      "name": "Sri Jayawardenepura Kotte",
+      "lat": 6.9016,
+      "lng": 79.9,
       "stateOrRegion": "Sri Lanka",
       "population": 2190000,
       "aliases": [
-        "Sri Jayawardenepura Kotte",
-        "Kotte"
+        "Colombo",
+        "Kotte",
+        "Sri Jayawardenepura"
       ]
     },
     {

@@ -206,7 +206,7 @@ export const RevisionTab: React.FC<RevisionTabProps> = ({
             {selectedQueueTags.length > 0 ? ` / ${queue.length} enrolled` : ''})
           </span>
           <span className="text-[11px] text-slate-500">
-            Ordered by priority(Δt, last_score, 100%_count)
+            Ordered by FSRS Priority W(Δt, S, D, err_burden, cooldown)
           </span>
         </div>
 
@@ -242,9 +242,28 @@ export const RevisionTab: React.FC<RevisionTabProps> = ({
                         />
                       )}
                       <span className="text-sm font-bold text-white">{quiz.title}</span>
-                      <span className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-[11px] text-indigo-300">
+                      <span
+                        className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-[11px] text-indigo-300"
+                        title="Priority Weight W"
+                      >
                         W: {item.priorityScore.toFixed(2)}
                       </span>
+                      {item.stabilityDays !== undefined && (
+                        <span
+                          className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-[10px] text-emerald-300"
+                          title="Memory Stability S (days to 90% retrievability)"
+                        >
+                          S: {item.stabilityDays}d
+                        </span>
+                      )}
+                      {item.difficultyScore !== undefined && (
+                        <span
+                          className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-[10px] text-amber-300"
+                          title="Intrinsic & Error-Weighted Difficulty D (1..10)"
+                        >
+                          D: {item.difficultyScore}
+                        </span>
+                      )}
                       {quiz.tags.map((t) => (
                         <button
                           key={t}

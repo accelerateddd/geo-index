@@ -6,7 +6,8 @@ interface SpecialCitiesCanvasProps {
   countryFeature: GeoJSON.Feature | null;
   topN: number;
   showCapitalStar: boolean;
-  scaleByPopulation: boolean;
+  showRelativePopulation: boolean;
+  showAbsolutePopulation: boolean;
   showScaleReference: boolean;
   isRevealed: boolean;
 }
@@ -80,7 +81,7 @@ const SCALE_REFERENCE_OBJECTS: ScaleReferenceObject[] = [
 
 function formatPop(pop: number): string {
   if (!pop || pop <= 0) return '';
-  if (pop >= 1_000_000) return `${(pop / 1_000_000).toFixed(1)}M`;
+  if (pop >= 1_000_000) return `${(pop / 1_000_000).toFixed(2)}M`;
   if (pop >= 1_000) return `${Math.round(pop / 1_000)}k`;
   return String(pop);
 }
@@ -104,13 +105,17 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
   countryFeature,
   topN,
   showCapitalStar,
-  scaleByPopulation,
+  showRelativePopulation,
+  showAbsolutePopulation,
   showScaleReference,
   isRevealed,
 }) => {
   // Select the N cities to display (if showCapitalStar is true, ensure the capital is included in the N cities)
+  // Also preserve 1-based population rank for each city
   const displayedCities = useMemo(() => {
-    const sorted = [...item.cities].sort((a, b) => (b.population || 0) - (a.population || 0));
+    const sorted = [...item.cities]
+      .sort((a, b) => (b.population || 0) - (a.population || 0))
+      .map((c, idx) => ({ ...c, rank: idx + 1 }));
     const slice = sorted.slice(0, topN);
     if (showCapitalStar) {
       const hasCap = slice.some((c) => c.isCapital);
@@ -222,7 +227,6 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
       }
     }
 
-    // Clamp display scale if the country is extremely huge or tiny so the corner box stays neat
     const rawPxSpan = best.spanKm * projection.pxPerKm;
     const effectivePxPerKm =
       rawPxSpan > 165
@@ -261,16 +265,23 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
   return (
     <div className="w-full h-full flex items-center justify-center p-4 bg-slate-950">
       <div className="max-w-4xl w-full bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center shadow-2xl relative">
-        <div className="w-full flex items-center justify-between text-[11px] text-slate-400 px-2 pb-2 border-b border-slate-800/80">
-          <div className="flex items-center gap-3">
+        <div className="w-full flex items-center justify-between text-[11px] text-slate-400 px-2 pb-2 border-b border-slate-800/80 flex-wrap gap-2">
+          <div className="flex items-center gap-3 flex-wrap">
             <span>
               PLOTTED_CITIES: <strong className="text-white">{displayedCities.length}</strong>
             </span>
             {showCapitalStar && (
               <span className="text-amber-300 font-bold">★ = CAPITAL</span>
             )}
-            {scaleByPopulation && (
-              <span className="text-sky-300">SIZE ∝ √POPULATION</span>
+            {showRelativePopulation && (
+              <span className="text-sky-300 font-semibold">
+                RELATIVE_POP (SIZE ∝ √POP + RANK #)
+              </span>
+            )}
+            {showAbsolutePopulation && (
+              <span className="text-indigo-300 font-semibold">
+                ABSOLUTE_POP SHOWN
+              </span>
             )}
           </div>
           <div>
@@ -314,8 +325,26 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
           {displayedCities.map((city, idx) => {
             const [cx, cy] = projection.toScreen(city.lng, city.lat);
             const popRatio = Math.sqrt(Math.max(0.04, (city.population || 1) / maxPop));
-            const radius = scaleByPopulation ? 4.5 + 8.5 * popRatio : 7;
+            const scaleProportional = showRelativePopulation || showAbsolutePopulation;
+            const radius = scaleProportional ? 4.8 + 8.5 * popRatio : 7;
             const isCapStar = showCapitalStar && city.isCapital;
+
+            // Build pre-reveal label (rank # and/or absolute population)
+            const preRevealParts: string[] = [];
+            if (showRelativePopulation) {
+              preRevealParts.push(`#${city.rank}`);
+            }
+            if (showAbsolutePopulation && city.population) {
+              preRevealParts.push(formatPop(city.population));
+            }
+            const preRevealText = preRevealParts.join(' • ');
+
+            // Build post-reveal full label
+            const revealedText = `${isCapStar ? '★ ' : ''}${
+              showRelativePopulation ? `#${city.rank} ` : ''
+            }${city.name}${city.population ? ` (${formatPop(city.population)})` : ''}`;
+
+            const activeLabel = isRevealed ? revealedText : preRevealText;
 
             return (
               <g key={`${city.name}-${idx}`}>
@@ -338,31 +367,35 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
                   />
                 )}
 
-                {isRevealed && (
+                {activeLabel && (
                   <g>
                     <rect
                       x={cx + radius + 5}
                       y={cy - 10}
-                      width={
-                        (city.name.length + (city.population ? 7 : 0)) * 6.4 + 10
-                      }
+                      width={activeLabel.length * 6.3 + 10}
                       height={19}
                       rx={3}
                       fill="#020617"
                       fillOpacity={0.88}
-                      stroke="#334155"
+                      stroke={isRevealed ? '#475569' : '#1e293b'}
                       strokeWidth={1}
                     />
                     <text
                       x={cx + radius + 10}
                       y={cy + 3}
-                      fill={isCapStar ? '#fde047' : '#f8fafc'}
+                      fill={
+                        isRevealed
+                          ? isCapStar
+                            ? '#fde047'
+                            : '#f8fafc'
+                          : isCapStar
+                          ? '#fde047'
+                          : '#bae6fd'
+                      }
                       fontSize={11}
                       fontWeight="bold"
                     >
-                      {isCapStar ? '★ ' : ''}
-                      {city.name}
-                      {city.population ? ` (${formatPop(city.population)})` : ''}
+                      {activeLabel}
                     </text>
                   </g>
                 )}

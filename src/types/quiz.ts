@@ -12,12 +12,22 @@ export type QuizMode = 'type-highlighted' | 'click-named' | 'list-all';
 export type TypingMatchMode = 'enter-submit' | 'instant-match';
 
 export type MapDisplayStyle =
-  | 'all-outlines' // Standard: all subdivision outlines visible
+  | 'all-outlines' // Standard: subdivision outlines visible (or isolated target if isolateTargetInCountry is true)
   | 'minefield-no-outlines' // Click mode variant: only outer country/continent border visible, no internal outlines
-  | 'centroid-dot' // Country outline visible, subdivision replaced by centroid dot (Type only)
-  | 'isolated-outline-in-country' // Country outline visible, ONLY target subdivision outline visible (Type only)
+  | 'centroid-dot' // Country outline visible, subdivisions replaced by centroid dots (or single dot if isolateTargetInCountry is true)
+  | 'isolated-outline-in-country' // Legacy alias for all-outlines + isolateTargetInCountry=true
   | 'isolated-shape' // No map, just a high-def picture/SVG of the target subdivision shape (Type only)
   | 'unit-vectors'; // No shape drawn; unit vectors from centroid to N closest centroids with labels (Type only)
+
+export type ListAllDisplayStyle =
+  | 'map-outlines' // Standard map with all outlines visible; fills in as you list items
+  | 'map-reveal-borders' // No internal borders shown until an item is named, then that region appears
+  | 'no-map-list'; // No map at all; items are listed into an on-screen text table
+
+export type ListAllOrderMode =
+  | 'named-order' // Default: items appear in the order you name them (1..N)
+  | 'alphabetical' // Easier: slots are ordered A-Z so blank slots between named items give alphabetical hints
+  | 'blind'; // Hardest: no progress or named list is shown, and quiz only ends when you press Submit
 
 export type FlagDisplayMode = 'standard' | 'filtered' | 'pie-chart';
 
@@ -38,14 +48,23 @@ export interface QuizPlaySettings {
   mode: QuizMode;
   typingMatchMode: TypingMatchMode;
   mapDisplayStyle: MapDisplayStyle;
+  /** Sub-setting for 'all-outlines' and 'centroid-dot': only show the active target outline/centroid inside the country border */
+  isolateTargetInCountry?: boolean;
   vectorNeighborsCount: number; // Customisable N for unit-vectors mode (1 to totalItems - 1)
   randomRotation?: boolean; // Optional random rotation/alignment for isolated-shape mode
+  // List-All mode settings:
+  listAllDisplayStyle?: ListAllDisplayStyle;
+  listAllShowOuterBorder?: boolean; // For 'map-reveal-borders': whether to show outer country/continent outline
+  listAllOrderMode?: ListAllOrderMode; // For 'no-map-list': 'named-order' | 'alphabetical' | 'blind'
+  // Flag mode settings:
   flagDisplayMode?: FlagDisplayMode; // Display mode for flag type quizzes
   flagFilters?: FlagFilterId[]; // Active layered filters when flagDisplayMode === 'filtered'
   // Special Top-N Cities Relative Position Quiz settings:
   specialCitiesCount?: number; // N largest cities to plot (3 to 12)
   showCapitalStar?: boolean; // Show star for capital city
-  scaleCitiesByPopulation?: boolean; // Scale dot radius by city population
+  showRelativePopulation?: boolean; // Scale dot radius by sqrt(pop) and display rank #1..#N
+  showAbsolutePopulation?: boolean; // Display absolute population of each city (e.g. 5.3M, 420k)
+  scaleCitiesByPopulation?: boolean; // Legacy compatibility flag
   showScaleReference?: boolean; // Show corner non-country geographical reference silhouette at matching scale
 }
 
@@ -147,6 +166,10 @@ export interface QuizRevisionStats {
   fastestPerfectSeconds: number | null;
   /** Frequently missed regions/items across attempts: itemName -> missCount */
   missedFrequency: Record<string, number>;
+  /** Estimated memory stability S in days (time until recall probability drops to 90%) */
+  stabilityDays?: number | null;
+  /** Estimated difficulty / error burden D in [1.0, 10.0] from historical mistakes */
+  difficultyScore?: number;
 }
 
 export interface RevisionQueueItem {
@@ -155,4 +178,12 @@ export interface RevisionQueueItem {
   /** Continuous priority weight — higher means higher priority in the endless queue */
   priorityScore: number;
   daysSinceLastPlayed: number | null;
+  /** Estimated current probability of a 100% recall run, in [0, 1] */
+  retrievability?: number | null;
+  /** Days until R(t) drops to 0.90 (negative = overdue) */
+  dueInDays?: number | null;
+  /** Memory Stability S in days */
+  stabilityDays?: number | null;
+  /** Error-weighted Difficulty D in [1, 10] */
+  difficultyScore?: number | null;
 }

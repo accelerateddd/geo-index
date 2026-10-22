@@ -1374,17 +1374,17 @@
     "aliases": [],
     "cities": [
       {
-        "name": "Porto-Novo",
-        "lat": 6.402,
-        "lng": 2.518,
-        "population": 762000,
-        "isCapital": true
+        "name": "Cotonou",
+        "lat": 6.3654,
+        "lng": 2.4183,
+        "population": 1225000,
+        "isCapital": false
       },
       {
         "name": "Porto-Novo",
-        "lat": 6.4833,
-        "lng": 2.6166,
-        "population": 300000,
+        "lat": 6.4969,
+        "lng": 2.6289,
+        "population": 294000,
         "isCapital": true
       },
       {
@@ -1494,7 +1494,7 @@
         "lat": -16.496,
         "lng": -68.1519,
         "population": 1590000,
-        "isCapital": true
+        "isCapital": false
       },
       {
         "name": "Cochabamba",
@@ -1502,6 +1502,13 @@
         "lng": -66.17,
         "population": 1000000,
         "isCapital": false
+      },
+      {
+        "name": "Sucre",
+        "lat": -19.0431,
+        "lng": -65.2592,
+        "population": 360000,
+        "isCapital": true
       },
       {
         "name": "Oruro",
@@ -1529,7 +1536,7 @@
         "lat": -19.041,
         "lng": -65.2595,
         "population": 224838,
-        "isCapital": true
+        "isCapital": false
       },
       {
         "name": "Potosí",
@@ -4355,6 +4362,13 @@
         "lat": 3.75,
         "lng": 8.7833,
         "population": 155963,
+        "isCapital": false
+      },
+      {
+        "name": "Ciudad de la Paz",
+        "lat": 1.589,
+        "lng": 10.822,
+        "population": 15000,
         "isCapital": true
       },
       {
@@ -13260,18 +13274,25 @@
     ],
     "cities": [
       {
+        "name": "Colombo",
+        "lat": 6.932,
+        "lng": 79.8578,
+        "population": 752000,
+        "isCapital": false
+      },
+      {
+        "name": "Colombo",
+        "lat": 6.9,
+        "lng": 79.95,
+        "population": 752000,
+        "isCapital": false
+      },
+      {
         "name": "Jaffna",
         "lat": 9.675,
         "lng": 80.005,
         "population": 250000,
         "isCapital": false
-      },
-      {
-        "name": "Colombo",
-        "lat": 6.932,
-        "lng": 79.8578,
-        "population": 217000,
-        "isCapital": true
       },
       {
         "name": "Moratuwa",
@@ -13295,10 +13316,10 @@
         "isCapital": false
       },
       {
-        "name": "Colombo",
-        "lat": 6.9,
-        "lng": 79.95,
-        "population": 115826,
+        "name": "Sri Jayawardenepura Kotte",
+        "lat": 6.9016,
+        "lng": 79.9,
+        "population": 115000,
         "isCapital": true
       },
       {

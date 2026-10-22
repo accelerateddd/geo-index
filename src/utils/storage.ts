@@ -11,15 +11,42 @@ export const DEFAULT_PLAY_SETTINGS: QuizPlaySettings = {
   mode: 'type-highlighted',
   typingMatchMode: 'enter-submit',
   mapDisplayStyle: 'all-outlines',
+  isolateTargetInCountry: false,
   vectorNeighborsCount: 5,
   randomRotation: false,
+  listAllDisplayStyle: 'map-outlines',
+  listAllShowOuterBorder: true,
+  listAllOrderMode: 'named-order',
   flagDisplayMode: 'standard',
   flagFilters: ['pixelate'],
   specialCitiesCount: 5,
   showCapitalStar: true,
+  showRelativePopulation: true,
+  showAbsolutePopulation: false,
   scaleCitiesByPopulation: true,
   showScaleReference: true,
 };
+
+export function normalizePlaySettings(raw: Partial<QuizPlaySettings>): QuizPlaySettings {
+  const merged: QuizPlaySettings = {
+    ...DEFAULT_PLAY_SETTINGS,
+    ...raw,
+    flagFilters: raw.flagFilters?.length ? raw.flagFilters : ['pixelate'],
+  };
+
+  // Migrate legacy 'isolated-outline-in-country' into 'all-outlines' + isolateTargetInCountry: true
+  if (merged.mapDisplayStyle === 'isolated-outline-in-country') {
+    merged.mapDisplayStyle = 'all-outlines';
+    merged.isolateTargetInCountry = true;
+  }
+
+  // Migrate legacy scaleCitiesByPopulation if showRelativePopulation was not explicitly set
+  if (raw.showRelativePopulation === undefined && raw.scaleCitiesByPopulation !== undefined) {
+    merged.showRelativePopulation = Boolean(raw.scaleCitiesByPopulation);
+  }
+
+  return merged;
+}
 
 export function loadTrackedPresets(): Record<string, QuizPlaySettings> {
   try {
@@ -35,11 +62,7 @@ export function getTrackedPresetForQuiz(quizId: string): QuizPlaySettings {
   const all = loadTrackedPresets();
   const saved = all[quizId];
   if (!saved) return { ...DEFAULT_PLAY_SETTINGS };
-  return {
-    ...DEFAULT_PLAY_SETTINGS,
-    ...saved,
-    flagFilters: saved.flagFilters?.length ? saved.flagFilters : ['pixelate'],
-  };
+  return normalizePlaySettings(saved);
 }
 
 export function saveTrackedPresetForQuiz(
@@ -47,7 +70,7 @@ export function saveTrackedPresetForQuiz(
   settings: QuizPlaySettings
 ): Record<string, QuizPlaySettings> {
   const all = loadTrackedPresets();
-  const updated = { ...all, [quizId]: settings };
+  const updated = { ...all, [quizId]: normalizePlaySettings(settings) };
   localStorage.setItem(TRACKED_PRESETS_KEY, JSON.stringify(updated));
   return updated;
 }
@@ -58,51 +81,77 @@ export function isMatchingTrackedPreset(
   isFlagQuiz: boolean,
   isSpecialQuiz: boolean = false
 ): boolean {
+  const cur = normalizePlaySettings(current);
+  const trk = normalizePlaySettings(tracked);
+
   if (isSpecialQuiz) {
     return (
-      (current.specialCitiesCount || 5) === (tracked.specialCitiesCount || 5) &&
-      Boolean(current.showCapitalStar ?? true) ===
-        Boolean(tracked.showCapitalStar ?? true) &&
-      Boolean(current.scaleCitiesByPopulation ?? true) ===
-        Boolean(tracked.scaleCitiesByPopulation ?? true) &&
-      Boolean(current.showScaleReference ?? true) ===
-        Boolean(tracked.showScaleReference ?? true)
+      (cur.specialCitiesCount || 5) === (trk.specialCitiesCount || 5) &&
+      Boolean(cur.showCapitalStar ?? true) === Boolean(trk.showCapitalStar ?? true) &&
+      Boolean(cur.showRelativePopulation ?? true) ===
+        Boolean(trk.showRelativePopulation ?? true) &&
+      Boolean(cur.showAbsolutePopulation ?? false) ===
+        Boolean(trk.showAbsolutePopulation ?? false) &&
+      Boolean(cur.showScaleReference ?? true) === Boolean(trk.showScaleReference ?? true)
     );
   }
 
-  if (current.mode !== tracked.mode) return false;
+  if (cur.mode !== trk.mode) return false;
   if (
-    (current.mode === 'type-highlighted' || current.mode === 'list-all') &&
-    current.typingMatchMode !== tracked.typingMatchMode
+    (cur.mode === 'type-highlighted' || cur.mode === 'list-all') &&
+    cur.typingMatchMode !== trk.typingMatchMode
   ) {
     return false;
   }
 
+  if (cur.mode === 'list-all') {
+    const curListStyle = cur.listAllDisplayStyle || 'map-outlines';
+    const trkListStyle = trk.listAllDisplayStyle || 'map-outlines';
+    if (curListStyle !== trkListStyle) return false;
+    if (
+      curListStyle === 'map-reveal-borders' &&
+      Boolean(cur.listAllShowOuterBorder ?? true) !==
+        Boolean(trk.listAllShowOuterBorder ?? true)
+    ) {
+      return false;
+    }
+    if (
+      curListStyle === 'no-map-list' &&
+      (cur.listAllOrderMode || 'named-order') !== (trk.listAllOrderMode || 'named-order')
+    ) {
+      return false;
+    }
+    return true;
+  }
+
   if (isFlagQuiz) {
-    if (current.mode === 'type-highlighted') {
-      const curFlagMode = current.flagDisplayMode || 'standard';
-      const trkFlagMode = tracked.flagDisplayMode || 'standard';
+    if (cur.mode === 'type-highlighted') {
+      const curFlagMode = cur.flagDisplayMode || 'standard';
+      const trkFlagMode = trk.flagDisplayMode || 'standard';
       if (curFlagMode !== trkFlagMode) return false;
       if (curFlagMode === 'filtered') {
-        const a = [...(current.flagFilters || [])].sort().join(',');
-        const b = [...(tracked.flagFilters || [])].sort().join(',');
+        const a = [...(cur.flagFilters || [])].sort().join(',');
+        const b = [...(trk.flagFilters || [])].sort().join(',');
         if (a !== b) return false;
       }
     }
     return true;
   }
 
-  if (current.mode === 'list-all') {
-    return true;
-  }
-
-  if (current.mapDisplayStyle !== tracked.mapDisplayStyle) {
+  if (cur.mapDisplayStyle !== trk.mapDisplayStyle) {
     return false;
   }
   if (
-    current.mode === 'type-highlighted' &&
-    current.mapDisplayStyle === 'isolated-shape' &&
-    Boolean(current.randomRotation) !== Boolean(tracked.randomRotation)
+    cur.mode === 'type-highlighted' &&
+    (cur.mapDisplayStyle === 'all-outlines' || cur.mapDisplayStyle === 'centroid-dot') &&
+    Boolean(cur.isolateTargetInCountry) !== Boolean(trk.isolateTargetInCountry)
+  ) {
+    return false;
+  }
+  if (
+    cur.mode === 'type-highlighted' &&
+    cur.mapDisplayStyle === 'isolated-shape' &&
+    Boolean(cur.randomRotation) !== Boolean(trk.randomRotation)
   ) {
     return false;
   }
@@ -110,13 +159,10 @@ export function isMatchingTrackedPreset(
   return true;
 }
 
-export function loadEnrolledQuizIds(
-  defaultIds: string[] = ['uga-adm2-central', 'aus-adm1', 'aus-cities-100k', 'aus-state-flags']
-): string[] {
+export function loadEnrolledQuizIds(defaultIds: string[] = []): string[] {
   try {
     const raw = localStorage.getItem(ENROLLED_REVISION_IDS_KEY);
     if (!raw) {
-      localStorage.setItem(ENROLLED_REVISION_IDS_KEY, JSON.stringify(defaultIds));
       return defaultIds;
     }
     return JSON.parse(raw) as string[];

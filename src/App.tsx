@@ -49,7 +49,7 @@ const PRIMARY_TYPE_TAGS = [
 ];
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('revision');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('explore');
   const [indexViewFormat, setIndexViewFormat] = useState<'list' | 'map'>('list');
 
   const [attempts, setAttempts] = useState<QuizAttempt[]>(() => loadAttempts());
@@ -57,7 +57,7 @@ export function App() {
     loadCustomQuizzesMeta()
   );
   const [enrolledIds, setEnrolledIds] = useState<string[]>(() =>
-    loadEnrolledQuizIds(['uga-adm2-central', 'aus-adm1', 'aus-cities-100k', 'aus-state-flags'])
+    loadEnrolledQuizIds([])
   );
   const [selectedQueueTags, setSelectedQueueTags] = useState<string[]>([]);
   const [simulatedDaysOffset, setSimulatedDaysOffset] = useState(0);
@@ -184,6 +184,21 @@ export function App() {
           <button
             onClick={() => {
               setActiveQuizSession(null);
+              setActiveTab('explore');
+            }}
+            className={`inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer shrink-0 ${
+              !activeQuizSession && activeTab === 'explore'
+                ? 'bg-indigo-600 text-white'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            <Compass className="w-3.5 h-3.5 shrink-0" />
+            <span>INDEX [{allQuizzes.length}]</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveQuizSession(null);
               setActiveTab('revision');
             }}
             className={`inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer shrink-0 ${
@@ -199,21 +214,6 @@ export function App() {
               {scopedRevisionQueue.length}
               {selectedQueueTags.length > 0 ? `/${revisionQueue.length}` : ''}]
             </span>
-          </button>
-
-          <button
-            onClick={() => {
-              setActiveQuizSession(null);
-              setActiveTab('explore');
-            }}
-            className={`inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer shrink-0 ${
-              !activeQuizSession && activeTab === 'explore'
-                ? 'bg-indigo-600 text-white'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-            }`}
-          >
-            <Compass className="w-3.5 h-3.5 shrink-0" />
-            <span>INDEX [{allQuizzes.length}]</span>
           </button>
 
           <button
