@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import type { SpecialCountryCitiesItem } from '../types/quiz';
+import type { CityPopulationBasis, SpecialCountryCitiesItem } from '../types/quiz';
 
 interface SpecialCitiesCanvasProps {
   item: SpecialCountryCitiesItem;
@@ -8,6 +8,7 @@ interface SpecialCitiesCanvasProps {
   showCapitalStar: boolean;
   showRelativePopulation: boolean;
   showAbsolutePopulation: boolean;
+  cityPopulationBasis: CityPopulationBasis;
   showScaleReference: boolean;
   isRevealed: boolean;
 }
@@ -100,6 +101,14 @@ function createStarPath(cx: number, cy: number, outerR: number): string {
   return pts.join(' ');
 }
 
+interface CandidateCorner {
+  id: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+  rectX: number;
+  rectY: number;
+  shiftX: number; // Direction to nudge constellation if compaction is needed
+  shiftY: number;
+}
+
 export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
   item,
   countryFeature,
@@ -107,13 +116,25 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
   showCapitalStar,
   showRelativePopulation,
   showAbsolutePopulation,
+  cityPopulationBasis = 'metro',
   showScaleReference,
   isRevealed,
 }) => {
+  const sourceCities = useMemo(() => {
+    if (
+      cityPopulationBasis === 'city-proper' &&
+      item.citiesProper &&
+      item.citiesProper.length >= 3
+    ) {
+      return item.citiesProper;
+    }
+    return item.cities;
+  }, [item.cities, item.citiesProper, cityPopulationBasis]);
+
   // Select the N cities to display (if showCapitalStar is true, ensure the capital is included in the N cities)
   // Also preserve 1-based population rank for each city
   const displayedCities = useMemo(() => {
-    const sorted = [...item.cities]
+    const sorted = [...sourceCities]
       .sort((a, b) => (b.population || 0) - (a.population || 0))
       .map((c, idx) => ({ ...c, rank: idx + 1 }));
     const slice = sorted.slice(0, topN);
@@ -127,18 +148,30 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
       }
     }
     return slice;
-  }, [item.cities, topN, showCapitalStar]);
+  }, [sourceCities, topN, showCapitalStar]);
 
   const viewW = 780;
   const viewH = 480;
-  const pad = 68;
+  const basePad = 68;
+  const boxW = 195;
+  const boxH = 135;
 
-  // Project cities (and country outline if revealed) into local metric km space
+  const candidateCorners: CandidateCorner[] = useMemo(
+    () => [
+      { id: 'bottom-right', rectX: viewW - boxW - 10, rectY: viewH - boxH - 10, shiftX: -1, shiftY: -1 },
+      { id: 'bottom-left', rectX: 10, rectY: viewH - boxH - 10, shiftX: 1, shiftY: -1 },
+      { id: 'top-right', rectX: viewW - boxW - 10, rectY: 10, shiftX: -1, shiftY: 1 },
+      { id: 'top-left', rectX: 10, rectY: 10, shiftX: 1, shiftY: 1 },
+    ],
+    []
+  );
+
+  // Project cities (and country outline if revealed) into local metric km space,
+  // automatically selecting a free corner for the scale reference or compacting the constellation if all 4 corners are occupied.
   const projection = useMemo(() => {
     const lats = displayedCities.map((c) => c.lat);
     const lngs = displayedCities.map((c) => c.lng);
 
-    // Also include country outline bounds when revealed so the country outline fits cleanly
     if (isRevealed && countryFeature?.geometry) {
       const visit = (coords: any) => {
         if (!Array.isArray(coords) || coords.length === 0) return;
@@ -172,21 +205,133 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
     const spanYKm = Math.max(30, (maxLat - minLat) * 111.32);
     const maxSpanKm = Math.max(spanXKm, spanYKm);
 
-    const availW = viewW - pad * 2;
-    const availH = viewH - pad * 2;
-    const pxPerKm = Math.min(availW / spanXKm, availH / spanYKm);
+    const availW = viewW - basePad * 2;
+    const availH = viewH - basePad * 2;
+    let pxPerKm = Math.min(availW / spanXKm, availH / spanYKm);
+    let offsetX = viewW / 2;
+    let offsetY = viewH / 2;
+    let chosenCorner = candidateCorners[0];
+
+    const hasLabel = showRelativePopulation || showAbsolutePopulation || isRevealed;
+    const labelExtraRight = hasLabel ? 92 : 16;
+
+    const countCornerCollisions = (
+      corner: CandidateCorner,
+      scalePxPerKm: number,
+      ox: number,
+      oy: number
+    ) => {
+      let collisions = 0;
+      let minClearance = Infinity;
+      const boxLeft = corner.rectX - 14;
+      const boxRight = corner.rectX + boxW + 14;
+      const boxTop = corner.rectY - 14;
+      const boxBottom = corner.rectY + boxH + 14;
+      const boxCenterX = corner.rectX + boxW / 2;
+      const boxCenterY = corner.rectY + boxH / 2;
+
+      for (const c of displayedCities) {
+        const [xKm, yKm] = toKm(c.lng, c.lat);
+        const cx = ox + xKm * scalePxPerKm;
+        const cy = oy + yKm * scalePxPerKm;
+
+        const cityLeft = cx - 14;
+        const cityRight = cx + labelExtraRight;
+        const cityTop = cy - 16;
+        const cityBottom = cy + 16;
+
+        const overlaps =
+          cityRight >= boxLeft &&
+          cityLeft <= boxRight &&
+          cityBottom >= boxTop &&
+          cityTop <= boxBottom;
+        if (overlaps) collisions++;
+
+        const dist = Math.hypot(cx - boxCenterX, cy - boxCenterY);
+        if (dist < minClearance) minClearance = dist;
+      }
+      return { collisions, minClearance };
+    };
+
+    if (showScaleReference) {
+      // 1. Check if any of the 4 corners is already 100% free at full scale
+      let bestFreeCorner: CandidateCorner | null = null;
+      let bestFreeClearance = -1;
+
+      for (const corner of candidateCorners) {
+        const { collisions, minClearance } = countCornerCollisions(
+          corner,
+          pxPerKm,
+          offsetX,
+          offsetY
+        );
+        if (collisions === 0 && minClearance > bestFreeClearance) {
+          bestFreeClearance = minClearance;
+          bestFreeCorner = corner;
+        }
+      }
+
+      if (bestFreeCorner) {
+        chosenCorner = bestFreeCorner;
+      } else {
+        // 2. All 4 corners had a city in them at full scale:
+        // Pick the corner with the fewest collisions & largest clearance, then compact/nudge the constellation until 0 collisions
+        let bestCandidate = candidateCorners[0];
+        let bestScore = Infinity;
+        for (const corner of candidateCorners) {
+          const { collisions, minClearance } = countCornerCollisions(
+            corner,
+            pxPerKm,
+            offsetX,
+            offsetY
+          );
+          const score = collisions * 1000 - minClearance;
+          if (score < bestScore) {
+            bestScore = score;
+            bestCandidate = corner;
+          }
+        }
+        chosenCorner = bestCandidate;
+
+        for (let step = 1; step <= 8; step++) {
+          const factor = 1 - step * 0.055; // Down to ~0.56x if needed
+          const testPxPerKm = pxPerKm * factor;
+          const testOx = viewW / 2 + chosenCorner.shiftX * step * 11;
+          const testOy = viewH / 2 + chosenCorner.shiftY * step * 8;
+          const { collisions } = countCornerCollisions(
+            chosenCorner,
+            testPxPerKm,
+            testOx,
+            testOy
+          );
+          pxPerKm = testPxPerKm;
+          offsetX = testOx;
+          offsetY = testOy;
+          if (collisions === 0) break;
+        }
+      }
+    }
 
     const toScreen = (lng: number, lat: number): [number, number] => {
       const [xKm, yKm] = toKm(lng, lat);
-      return [viewW / 2 + xKm * pxPerKm, viewH / 2 + yKm * pxPerKm];
+      return [offsetX + xKm * pxPerKm, offsetY + yKm * pxPerKm];
     };
 
     return {
       pxPerKm,
       maxSpanKm,
       toScreen,
+      chosenCorner,
     };
-  }, [displayedCities, isRevealed, countryFeature]);
+  }, [
+    displayedCities,
+    isRevealed,
+    countryFeature,
+    showScaleReference,
+    showRelativePopulation,
+    showAbsolutePopulation,
+    candidateCorners,
+  ]);
 
   // Country outline SVG path (shown upon guess reveal)
   const countrySvgPath = useMemo(() => {
@@ -235,8 +380,9 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
         ? 42 / best.spanKm
         : projection.pxPerKm;
 
-    const refCenterX = viewW - 105;
-    const refCenterY = viewH - 78;
+    const { rectX, rectY } = projection.chosenCorner;
+    const refCenterX = rectX + boxW / 2;
+    const refCenterY = rectY + boxH / 2 + 12;
 
     const pathParts: string[] = [];
     for (const ring of best.ringsKm) {
@@ -252,8 +398,8 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
       name: best.name,
       spanKm: best.spanKm,
       pathD: pathParts.join(' '),
-      centerX: refCenterX,
-      centerY: refCenterY,
+      rectX,
+      rectY,
     };
   }, [showScaleReference, projection]);
 
@@ -269,6 +415,12 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
           <div className="flex items-center gap-3 flex-wrap">
             <span>
               PLOTTED_CITIES: <strong className="text-white">{displayedCities.length}</strong>
+            </span>
+            <span className="text-slate-300">
+              BASIS:{' '}
+              <strong className="text-emerald-300">
+                {cityPopulationBasis === 'city-proper' ? 'CITY_PROPER' : 'METRO_AREA'}
+              </strong>
             </span>
             {showCapitalStar && (
               <span className="text-amber-300 font-bold">★ = CAPITAL</span>
@@ -321,6 +473,48 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
             />
           )}
 
+          {/* Corner Scale Reference Silhouette (Placed in a verified collision-free corner) */}
+          {scaleRefRender && (
+            <g>
+              <rect
+                x={scaleRefRender.rectX}
+                y={scaleRefRender.rectY}
+                width={boxW}
+                height={boxH}
+                rx={6}
+                fill="#020617"
+                fillOpacity={0.84}
+                stroke="#334155"
+                strokeWidth={1}
+              />
+              <text
+                x={scaleRefRender.rectX + 10}
+                y={scaleRefRender.rectY + 18}
+                fill="#94a3b8"
+                fontSize={9.5}
+                fontWeight="bold"
+              >
+                SCALE REF: {scaleRefRender.name}
+              </text>
+              <text
+                x={scaleRefRender.rectX + 10}
+                y={scaleRefRender.rectY + 31}
+                fill="#64748b"
+                fontSize={8.5}
+              >
+                (~{scaleRefRender.spanKm} km span at same scale)
+              </text>
+              <path
+                d={scaleRefRender.pathD}
+                fill="#334155"
+                fillOpacity={0.65}
+                stroke="#94a3b8"
+                strokeWidth={1.3}
+                strokeLinejoin="round"
+              />
+            </g>
+          )}
+
           {/* City Dots & Capital Star */}
           {displayedCities.map((city, idx) => {
             const [cx, cy] = projection.toScreen(city.lng, city.lat);
@@ -329,7 +523,6 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
             const radius = scaleProportional ? 4.8 + 8.5 * popRatio : 7;
             const isCapStar = showCapitalStar && city.isCapital;
 
-            // Build pre-reveal label (rank # and/or absolute population)
             const preRevealParts: string[] = [];
             if (showRelativePopulation) {
               preRevealParts.push(`#${city.rank}`);
@@ -339,7 +532,6 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
             }
             const preRevealText = preRevealParts.join(' • ');
 
-            // Build post-reveal full label
             const revealedText = `${isCapStar ? '★ ' : ''}${
               showRelativePopulation ? `#${city.rank} ` : ''
             }${city.name}${city.population ? ` (${formatPop(city.population)})` : ''}`;
@@ -402,48 +594,6 @@ export const SpecialCitiesCanvas: React.FC<SpecialCitiesCanvasProps> = ({
               </g>
             );
           })}
-
-          {/* Corner Scale Reference Silhouette */}
-          {scaleRefRender && (
-            <g>
-              <rect
-                x={viewW - 205}
-                y={viewH - 145}
-                width={195}
-                height={135}
-                rx={6}
-                fill="#020617"
-                fillOpacity={0.82}
-                stroke="#334155"
-                strokeWidth={1}
-              />
-              <text
-                x={viewW - 195}
-                y={viewH - 127}
-                fill="#94a3b8"
-                fontSize={9.5}
-                fontWeight="bold"
-              >
-                SCALE REF: {scaleRefRender.name}
-              </text>
-              <text
-                x={viewW - 195}
-                y={viewH - 114}
-                fill="#64748b"
-                fontSize={8.5}
-              >
-                (~{scaleRefRender.spanKm} km span at same scale)
-              </text>
-              <path
-                d={scaleRefRender.pathD}
-                fill="#334155"
-                fillOpacity={0.65}
-                stroke="#94a3b8"
-                strokeWidth={1.3}
-                strokeLinejoin="round"
-              />
-            </g>
-          )}
         </svg>
       </div>
     </div>

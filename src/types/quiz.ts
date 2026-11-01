@@ -5,11 +5,16 @@ export type QuizCategory =
   | 'landscapes'
   | 'cities'
   | 'special'
+  | 'mega'
   | 'leisure';
 
-export type QuizMode = 'type-highlighted' | 'click-named' | 'list-all';
+export type QuizMode = 'type-highlighted' | 'click-named' | 'list-all' | 'learn';
 
 export type TypingMatchMode = 'enter-submit' | 'instant-match';
+
+export type CityPopulationBasis = 'metro' | 'city-proper';
+
+export type MegaDisambiguationMode = 'prompt-wider-region' | 'click-active-region';
 
 export type MapDisplayStyle =
   | 'all-outlines' // Standard: subdivision outlines visible (or isolated target if isolateTargetInCountry is true)
@@ -56,6 +61,10 @@ export interface QuizPlaySettings {
   listAllDisplayStyle?: ListAllDisplayStyle;
   listAllShowOuterBorder?: boolean; // For 'map-reveal-borders': whether to show outer country/continent outline
   listAllOrderMode?: ListAllOrderMode; // For 'no-map-list': 'named-order' | 'alphabetical' | 'blind'
+  // Learn mode settings:
+  learnClusterCount?: number; // Number of regional bunches/sub-quizzes N (1 = no split, 2..25 = N contiguous regional clusters)
+  // Mega quiz settings:
+  megaDisambiguationMode?: MegaDisambiguationMode; // 'prompt-wider-region' | 'click-active-region'
   // Flag mode settings:
   flagDisplayMode?: FlagDisplayMode; // Display mode for flag type quizzes
   flagFilters?: FlagFilterId[]; // Active layered filters when flagDisplayMode === 'filtered'
@@ -64,6 +73,7 @@ export interface QuizPlaySettings {
   showCapitalStar?: boolean; // Show star for capital city
   showRelativePopulation?: boolean; // Scale dot radius by sqrt(pop) and display rank #1..#N
   showAbsolutePopulation?: boolean; // Display absolute population of each city (e.g. 5.3M, 420k)
+  cityPopulationBasis?: CityPopulationBasis; // 'metro' (default) | 'city-proper'
   scaleCitiesByPopulation?: boolean; // Legacy compatibility flag
   showScaleReference?: boolean; // Show corner non-country geographical reference silhouette at matching scale
 }
@@ -92,18 +102,40 @@ export interface FlagQuizItem {
   aliases?: string[];
 }
 
+export interface SpecialCountryCityEntry {
+  name: string;
+  lat: number;
+  lng: number;
+  population: number;
+  isCapital: boolean;
+}
+
 export interface SpecialCountryCitiesItem {
   iso3: string;
   iso2?: string;
   countryName: string;
   aliases?: string[];
-  cities: Array<{
-    name: string;
-    lat: number;
-    lng: number;
-    population: number;
-    isCapital: boolean;
-  }>;
+  /** Top cities by Metropolitan Area (default) */
+  cities: SpecialCountryCityEntry[];
+  /** Top cities by City Proper (administrative municipality boundary) */
+  citiesProper?: SpecialCountryCityEntry[];
+}
+
+export interface MegaSynthesisSlot {
+  slotKey: string;
+  slotLabel: string;
+  defaultQuizId: string;
+  candidateQuizIds: string[];
+}
+
+export interface MegaQuizProgressSnapshot {
+  quizId: string;
+  updatedAt: number;
+  elapsedSeconds: number;
+  namedOrderList: string[];
+  namedTimestamps: Record<string, number>;
+  slotOverrides: Record<string, string>;
+  activeSlotKey: string | null;
 }
 
 export interface QuizConfig {
@@ -138,6 +170,12 @@ export interface QuizConfig {
   totalItems: number;
   tags: string[];
   isCustom?: boolean;
+  /** Whether this quiz has been human-verified by the site owner */
+  verified?: boolean;
+  /** True if this is a synthesized Mega Quiz (1000s of items) */
+  isMegaQuiz?: boolean;
+  /** Synthesis slots defining which existing quizzes compose this Mega Quiz */
+  megaSynthesisSlots?: MegaSynthesisSlot[];
 }
 
 export interface QuizAttempt {

@@ -1,11 +1,43 @@
-import type { QuizAttempt, QuizConfig, QuizPlaySettings } from '../types/quiz';
+import type {
+  MegaQuizProgressSnapshot,
+  QuizAttempt,
+  QuizConfig,
+  QuizPlaySettings,
+} from '../types/quiz';
+import { resolveAssetUrl } from './assetUrl';
 
 const ATTEMPTS_STORAGE_KEY = 'geoquiz_attempts_v1';
 const CUSTOM_QUIZZES_META_KEY = 'geoquiz_custom_quizzes_meta_v1';
 const ENROLLED_REVISION_IDS_KEY = 'geoquiz_enrolled_revision_ids_v1';
 const TRACKED_PRESETS_KEY = 'geoquiz_tracked_presets_v1';
+const GLOBAL_CONFIG_CACHE_KEY = 'geoquiz_global_config_cache_v1';
+const OWNER_UNLOCKED_KEY = 'geoquiz_owner_unlocked_v1';
+const OWNER_GITHUB_TOKEN_KEY = 'geoquiz_owner_gh_token_v1';
+const USER_MEGA_OVERRIDES_KEY = 'geoquiz_user_mega_overrides_v1';
+const MEGA_PROGRESS_PREFIX = 'geoquiz_mega_progress_v1_';
+
 const IDB_NAME = 'geoquiz_db';
 const IDB_STORE = 'geojson_store';
+
+export interface GlobalSiteConfig {
+  verifiedQuizIds: string[];
+  megaQuizDefaultOverrides: Record<string, Record<string, string>>;
+}
+
+const DEFAULT_GLOBAL_CONFIG: GlobalSiteConfig = {
+  verifiedQuizIds: [
+    'aus-adm1',
+    'aus-state-flags',
+    'usa-adm1',
+    'svn-adm2-names',
+    'svn-adm1-regions',
+  ],
+  megaQuizDefaultOverrides: {
+    'mega-world-subdivisions': {},
+    'mega-usa-counties': {},
+    'mega-sydney-suburbs': {},
+  },
+};
 
 export const DEFAULT_PLAY_SETTINGS: QuizPlaySettings = {
   mode: 'type-highlighted',
@@ -17,32 +49,41 @@ export const DEFAULT_PLAY_SETTINGS: QuizPlaySettings = {
   listAllDisplayStyle: 'map-outlines',
   listAllShowOuterBorder: true,
   listAllOrderMode: 'named-order',
+  learnClusterCount: 1,
+  megaDisambiguationMode: 'prompt-wider-region',
   flagDisplayMode: 'standard',
   flagFilters: ['pixelate'],
   specialCitiesCount: 5,
   showCapitalStar: true,
   showRelativePopulation: true,
   showAbsolutePopulation: false,
+  cityPopulationBasis: 'metro',
   scaleCitiesByPopulation: true,
   showScaleReference: true,
 };
 
-export function normalizePlaySettings(raw: Partial<QuizPlaySettings>): QuizPlaySettings {
+export function normalizePlaySettings(
+  raw: Partial<QuizPlaySettings>,
+  isMegaQuiz: boolean = false
+): QuizPlaySettings {
   const merged: QuizPlaySettings = {
     ...DEFAULT_PLAY_SETTINGS,
+    ...(isMegaQuiz ? { mode: 'list-all' as const } : {}),
     ...raw,
     flagFilters: raw.flagFilters?.length ? raw.flagFilters : ['pixelate'],
   };
 
-  // Migrate legacy 'isolated-outline-in-country' into 'all-outlines' + isolateTargetInCountry: true
   if (merged.mapDisplayStyle === 'isolated-outline-in-country') {
     merged.mapDisplayStyle = 'all-outlines';
     merged.isolateTargetInCountry = true;
   }
 
-  // Migrate legacy scaleCitiesByPopulation if showRelativePopulation was not explicitly set
   if (raw.showRelativePopulation === undefined && raw.scaleCitiesByPopulation !== undefined) {
     merged.showRelativePopulation = Boolean(raw.scaleCitiesByPopulation);
+  }
+
+  if (!merged.cityPopulationBasis) {
+    merged.cityPopulationBasis = 'metro';
   }
 
   return merged;
@@ -58,11 +99,16 @@ export function loadTrackedPresets(): Record<string, QuizPlaySettings> {
   }
 }
 
-export function getTrackedPresetForQuiz(quizId: string): QuizPlaySettings {
+export function getTrackedPresetForQuiz(
+  quizId: string,
+  isMegaQuiz: boolean = false
+): QuizPlaySettings {
   const all = loadTrackedPresets();
   const saved = all[quizId];
-  if (!saved) return { ...DEFAULT_PLAY_SETTINGS };
-  return normalizePlaySettings(saved);
+  if (!saved) {
+    return normalizePlaySettings({}, isMegaQuiz);
+  }
+  return normalizePlaySettings(saved, isMegaQuiz);
 }
 
 export function saveTrackedPresetForQuiz(
@@ -84,6 +130,8 @@ export function isMatchingTrackedPreset(
   const cur = normalizePlaySettings(current);
   const trk = normalizePlaySettings(tracked);
 
+  if (cur.mode === 'learn') return false; // Learn mode is always untracked practice
+
   if (isSpecialQuiz) {
     return (
       (cur.specialCitiesCount || 5) === (trk.specialCitiesCount || 5) &&
@@ -92,6 +140,7 @@ export function isMatchingTrackedPreset(
         Boolean(trk.showRelativePopulation ?? true) &&
       Boolean(cur.showAbsolutePopulation ?? false) ===
         Boolean(trk.showAbsolutePopulation ?? false) &&
+      (cur.cityPopulationBasis || 'metro') === (trk.cityPopulationBasis || 'metro') &&
       Boolean(cur.showScaleReference ?? true) === Boolean(trk.showScaleReference ?? true)
     );
   }
@@ -158,6 +207,200 @@ export function isMatchingTrackedPreset(
 
   return true;
 }
+
+// ============================================================================
+// Global Config (Verified Quizzes & Default Mega Quiz Recipes for Everyone)
+// ============================================================================
+
+export function loadCachedGlobalConfig(): GlobalSiteConfig {
+  try {
+    const raw = localStorage.getItem(GLOBAL_CONFIG_CACHE_KEY);
+    if (!raw) return DEFAULT_GLOBAL_CONFIG;
+    const parsed = JSON.parse(raw) as Partial<GlobalSiteConfig>;
+    return {
+      verifiedQuizIds: Array.isArray(parsed.verifiedQuizIds)
+        ? parsed.verifiedQuizIds
+        : DEFAULT_GLOBAL_CONFIG.verifiedQuizIds,
+      megaQuizDefaultOverrides:
+        parsed.megaQuizDefaultOverrides || DEFAULT_GLOBAL_CONFIG.megaQuizDefaultOverrides,
+    };
+  } catch {
+    return DEFAULT_GLOBAL_CONFIG;
+  }
+}
+
+export function saveCachedGlobalConfig(cfg: GlobalSiteConfig): void {
+  localStorage.setItem(GLOBAL_CONFIG_CACHE_KEY, JSON.stringify(cfg));
+}
+
+export async function fetchLiveGlobalConfig(): Promise<GlobalSiteConfig> {
+  try {
+    const res = await fetch(resolveAssetUrl('/data/global-config.json'), {
+      cache: 'no-cache',
+    });
+    if (res.ok) {
+      const remote = (await res.json()) as Partial<GlobalSiteConfig>;
+      const local = loadCachedGlobalConfig();
+      // If owner has unlocked mode locally, merge verified sets so unsynced local owner changes aren't lost
+      const isOwner = loadOwnerUnlocked();
+      const verifiedSet = new Set<string>([
+        ...(remote.verifiedQuizIds || []),
+        ...(isOwner ? local.verifiedQuizIds : []),
+      ]);
+      const merged: GlobalSiteConfig = {
+        verifiedQuizIds: Array.from(verifiedSet),
+        megaQuizDefaultOverrides: {
+          ...(remote.megaQuizDefaultOverrides || {}),
+          ...(isOwner ? local.megaQuizDefaultOverrides : {}),
+        },
+      };
+      saveCachedGlobalConfig(merged);
+      return merged;
+    }
+  } catch {
+    // ignore offline error
+  }
+  return loadCachedGlobalConfig();
+}
+
+export function loadOwnerUnlocked(): boolean {
+  return localStorage.getItem(OWNER_UNLOCKED_KEY) === 'true';
+}
+
+export function saveOwnerUnlocked(unlocked: boolean): void {
+  localStorage.setItem(OWNER_UNLOCKED_KEY, unlocked ? 'true' : 'false');
+}
+
+export function loadOwnerGithubToken(): string {
+  return localStorage.getItem(OWNER_GITHUB_TOKEN_KEY) || '';
+}
+
+export function saveOwnerGithubToken(token: string): void {
+  localStorage.setItem(OWNER_GITHUB_TOKEN_KEY, token.trim());
+}
+
+/**
+ * Commits the updated GlobalSiteConfig directly to `public/data/global-config.json` in
+ * `accelerateddd/geo-index` via the GitHub Contents API if the owner has configured a GitHub PAT,
+ * so that verification and default mega-quiz changes automatically publish for all visitors.
+ */
+export async function syncGlobalConfigToGitHub(
+  config: GlobalSiteConfig
+): Promise<{ ok: boolean; message: string }> {
+  saveCachedGlobalConfig(config);
+  const token = loadOwnerGithubToken();
+  if (!token) {
+    return {
+      ok: false,
+      message: 'Saved locally in Owner Cache (Add GitHub PAT in Owner Panel to auto-publish to all users).',
+    };
+  }
+
+  const apiUrl =
+    'https://api.github.com/repos/accelerateddd/geo-index/contents/public/data/global-config.json';
+  try {
+    const getRes = await fetch(apiUrl, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+      },
+    });
+    let sha: string | undefined;
+    if (getRes.ok) {
+      const meta = await getRes.json();
+      sha = meta.sha;
+    }
+
+    const contentStr = JSON.stringify(config, null, 2) + '\n';
+    const base64Content = btoa(unescape(encodeURIComponent(contentStr)));
+
+    const putRes = await fetch(apiUrl, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: 'Update verified quizzes & mega quiz defaults via Owner UI',
+        content: base64Content,
+        ...(sha ? { sha } : {}),
+      }),
+    });
+
+    if (!putRes.ok) {
+      const errText = await putRes.text();
+      return { ok: false, message: `GitHub API error (${putRes.status}): ${errText}` };
+    }
+    return { ok: true, message: 'Published to GitHub repository for all users!' };
+  } catch (err: any) {
+    return { ok: false, message: err?.message || 'Failed to sync with GitHub API' };
+  }
+}
+
+// ============================================================================
+// Mega Quiz Personal Substitutions & Pausable Progress Snapshots
+// ============================================================================
+
+export function loadUserMegaSlotOverrides(
+  megaQuizId: string
+): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(USER_MEGA_OVERRIDES_KEY);
+    if (!raw) return {};
+    const all = JSON.parse(raw) as Record<string, Record<string, string>>;
+    return all[megaQuizId] || {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveUserMegaSlotOverrides(
+  megaQuizId: string,
+  overrides: Record<string, string>
+): void {
+  try {
+    const raw = localStorage.getItem(USER_MEGA_OVERRIDES_KEY);
+    const all = raw ? (JSON.parse(raw) as Record<string, Record<string, string>>) : {};
+    all[megaQuizId] = overrides;
+    localStorage.setItem(USER_MEGA_OVERRIDES_KEY, JSON.stringify(all));
+  } catch {
+    // ignore
+  }
+}
+
+export function loadMegaProgressSnapshot(
+  megaQuizId: string
+): MegaQuizProgressSnapshot | null {
+  try {
+    const raw = localStorage.getItem(`${MEGA_PROGRESS_PREFIX}${megaQuizId}`);
+    if (!raw) return null;
+    return JSON.parse(raw) as MegaQuizProgressSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+export function saveMegaProgressSnapshot(
+  snapshot: MegaQuizProgressSnapshot
+): void {
+  try {
+    localStorage.setItem(
+      `${MEGA_PROGRESS_PREFIX}${snapshot.quizId}`,
+      JSON.stringify(snapshot)
+    );
+  } catch (err) {
+    console.warn('Could not save mega quiz progress snapshot:', err);
+  }
+}
+
+export function clearMegaProgressSnapshot(megaQuizId: string): void {
+  localStorage.removeItem(`${MEGA_PROGRESS_PREFIX}${megaQuizId}`);
+}
+
+// ============================================================================
+// Standard Revision Queue & Attempts Storage
+// ============================================================================
 
 export function loadEnrolledQuizIds(defaultIds: string[] = []): string[] {
   try {

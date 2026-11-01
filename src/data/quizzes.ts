@@ -1,4 +1,9 @@
-import type { CityPointItem, FlagQuizItem, QuizConfig } from '../types/quiz';
+import type {
+  CityPointItem,
+  FlagQuizItem,
+  MegaSynthesisSlot,
+  QuizConfig,
+} from '../types/quiz';
 import generatedAdm1 from './generatedAdm1Quizzes.json';
 import subdivisionFlagQuizzes from './subdivisionFlagQuizzes.json';
 import worldCapitalsQuiz from './worldCapitalsQuiz.json';
@@ -593,7 +598,7 @@ const CORE_QUIZZES: QuizConfig[] = [
   },
 ];
 
-export const BUILT_IN_QUIZZES: QuizConfig[] = [
+const BASE_QUIZZES: QuizConfig[] = [
   ...CORE_QUIZZES,
   ...(riverQuizzes as unknown as QuizConfig[]),
   ...(generatedAdm1 as unknown as QuizConfig[]).map((q) => ({
@@ -603,4 +608,138 @@ export const BUILT_IN_QUIZZES: QuizConfig[] = [
   ...(ausLgaQuizzes as unknown as QuizConfig[]),
   ...(sydneySuburbQuizzes as unknown as QuizConfig[]),
   ...(usaCountyQuizzes as unknown as QuizConfig[]),
+];
+
+function buildWorldSubdivisionsMegaQuiz(allBase: QuizConfig[]): QuizConfig {
+  // Group all polygon subdivision quizzes by countryOrRegion
+  const byCountry = new Map<string, QuizConfig[]>();
+
+  for (const q of allBase) {
+    if (q.format !== 'map-polygon' || q.id === 'world-countries-map') continue;
+    if (q.category !== 'subdivisions' && q.category !== 'niche-subdivisions') continue;
+    // Skip partial regional slices (e.g. Uganda Central only, or individual US state county quizzes)
+    if (q.filterProperty && q.filterValue) continue;
+    if (q.tags.includes('usa-counties') || q.tags.includes('aus-lga') || q.tags.includes('sydney-suburbs')) {
+      continue;
+    }
+
+    const country = q.countryOrRegion;
+    if (!byCountry.has(country)) byCountry.set(country, []);
+    byCountry.get(country)!.push(q);
+  }
+
+  const slots: MegaSynthesisSlot[] = [];
+  let defaultTotal = 0;
+
+  const sortedCountries = Array.from(byCountry.keys()).sort((a, b) => a.localeCompare(b));
+  for (const country of sortedCountries) {
+    const candidates = byCountry.get(country)!;
+    // Prefer high-res core adm1 (aus-adm1, usa-adm1) or *-adm1-regions or 1st-level-divisions as default
+    const preferred =
+      candidates.find((c) => c.id === 'aus-adm1' || c.id === 'usa-adm1') ||
+      candidates.find((c) => c.id.includes('adm1-regions')) ||
+      candidates.find((c) => c.tags.includes('1st-level-divisions')) ||
+      candidates[0];
+
+    // Deduplicate candidate IDs (e.g. if both core aus-adm1 and generated aus-adm1 exist, keep unique)
+    const uniqueCandidates: QuizConfig[] = [];
+    const seenTitles = new Set<string>();
+    for (const c of [preferred, ...candidates]) {
+      const key = `${c.title}-${c.totalItems}`;
+      if (!seenTitles.has(key)) {
+        seenTitles.add(key);
+        uniqueCandidates.push(c);
+      }
+    }
+
+    slots.push({
+      slotKey: country,
+      slotLabel: country,
+      defaultQuizId: preferred.id,
+      candidateQuizIds: uniqueCandidates.map((c) => c.id),
+    });
+    defaultTotal += preferred.totalItems;
+  }
+
+  return {
+    id: 'mega-world-subdivisions',
+    title: `Mega Quiz: All World 1st-Level Subdivisions (${defaultTotal})`,
+    category: 'mega',
+    format: 'map-polygon',
+    countryOrRegion: 'World',
+    defaultCenter: [20, 10],
+    defaultZoom: 2,
+    totalItems: defaultTotal,
+    tags: ['MEGA', 'WORLD', '1st-level-divisions'],
+    isMegaQuiz: true,
+    megaSynthesisSlots: slots,
+  };
+}
+
+function buildUsaCountiesMegaQuiz(): QuizConfig {
+  const countyQuizzes = usaCountyQuizzes as unknown as QuizConfig[];
+  const slots: MegaSynthesisSlot[] = countyQuizzes.map((q) => {
+    const stateName = q.title.replace(/^USA\s*\((.+?)\):.*$/, '$1').trim() || q.countryOrRegion;
+    return {
+      slotKey: stateName,
+      slotLabel: stateName,
+      defaultQuizId: q.id,
+      candidateQuizIds: [q.id],
+    };
+  });
+  const total = countyQuizzes.reduce((acc, q) => acc + q.totalItems, 0);
+
+  return {
+    id: 'mega-usa-counties',
+    title: `Mega Quiz: All United States Counties (${total})`,
+    category: 'mega',
+    format: 'map-polygon',
+    countryOrRegion: 'United States',
+    backgroundGeoJsonUrl: '/data/us-states.geojson',
+    defaultCenter: [39.0, -96.0],
+    defaultZoom: 4,
+    totalItems: total,
+    tags: ['MEGA', 'USA', 'usa-counties'],
+    isMegaQuiz: true,
+    megaSynthesisSlots: slots,
+  };
+}
+
+function buildSydneySuburbsMegaQuiz(): QuizConfig {
+  const suburbQuizzes = sydneySuburbQuizzes as unknown as QuizConfig[];
+  const slots: MegaSynthesisSlot[] = suburbQuizzes.map((q) => {
+    const lgaName = q.title.replace(/^Sydney\s*\((.+?)\):.*$/, '$1').trim() || q.id;
+    return {
+      slotKey: lgaName,
+      slotLabel: lgaName,
+      defaultQuizId: q.id,
+      candidateQuizIds: [q.id],
+    };
+  });
+  const total = suburbQuizzes.reduce((acc, q) => acc + q.totalItems, 0);
+
+  return {
+    id: 'mega-sydney-suburbs',
+    title: `Mega Quiz: All Sydney Suburbs (${total})`,
+    category: 'mega',
+    format: 'map-polygon',
+    countryOrRegion: 'Australia',
+    defaultCenter: [-33.8688, 151.05],
+    defaultZoom: 10,
+    totalItems: total,
+    tags: ['MEGA', 'AUS', 'sydney-suburbs'],
+    isMegaQuiz: true,
+    megaSynthesisSlots: slots,
+  };
+}
+
+export const MEGA_QUIZZES: QuizConfig[] = [
+  buildWorldSubdivisionsMegaQuiz(BASE_QUIZZES),
+  buildUsaCountiesMegaQuiz(),
+  buildSydneySuburbsMegaQuiz(),
+];
+
+export const BUILT_IN_QUIZZES: QuizConfig[] = [
+  ...MEGA_QUIZZES,
+  ...BASE_QUIZZES,
 ];

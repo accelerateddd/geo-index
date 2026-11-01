@@ -9536,7 +9536,7 @@
   },
   {
     "id": "svn-adm2-names",
-    "title": "Slovenia: Municipalities (193)",
+    "title": "Slovenia: Municipalities (212)",
     "category": "niche-subdivisions",
     "countryOrRegion": "Slovenia",
     "geoJsonUrl": "/data/adm1/svn.geojson",
@@ -9663,7 +9663,7 @@
       14.9403
     ],
     "defaultZoom": 7,
-    "totalItems": 193,
+    "totalItems": 212,
     "tags": [
       "SVN",
       "2nd-level-divisions"

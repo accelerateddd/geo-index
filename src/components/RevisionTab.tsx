@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  CheckCircle2,
   Clock,
   Filter,
   MinusCircle,
@@ -7,6 +8,7 @@ import {
   PlusCircle,
   RotateCcw,
   Search,
+  ShieldAlert,
 } from 'lucide-react';
 import type { QuizConfig, RevisionQueueItem } from '../types/quiz';
 import { formatTimeAgo } from '../utils/revisionAlgorithm';
@@ -15,6 +17,9 @@ import { getQuizFlagIconUrl } from '../utils/flagIcons';
 interface RevisionTabProps {
   queue: RevisionQueueItem[];
   unenrolledQuizzes: QuizConfig[];
+  verifiedIds: string[];
+  isOwnerMode: boolean;
+  onToggleVerified: (quizId: string) => void;
   selectedQueueTags: string[];
   onToggleQueueTag: (tag: string) => void;
   onClearQueueTags: () => void;
@@ -33,6 +38,9 @@ interface RevisionTabProps {
 export const RevisionTab: React.FC<RevisionTabProps> = ({
   queue,
   unenrolledQuizzes,
+  verifiedIds,
+  isOwnerMode,
+  onToggleVerified,
   selectedQueueTags,
   onToggleQueueTag,
   onClearQueueTags,
@@ -44,6 +52,7 @@ export const RevisionTab: React.FC<RevisionTabProps> = ({
   nowTimestamp,
 }) => {
   const [poolSearch, setPoolSearch] = useState('');
+  const [verifiedFilter, setVerifiedFilter] = useState<'all' | 'verified' | 'unverified'>('all');
 
   const enrolledAvailableTags = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -56,26 +65,32 @@ export const RevisionTab: React.FC<RevisionTabProps> = ({
   }, [queue]);
 
   const activeFilteredQueue = useMemo(() => {
-    if (selectedQueueTags.length === 0) return queue;
-    const tagSet = new Set(selectedQueueTags);
-    return queue.filter((item) => item.quiz.tags.some((t) => tagSet.has(t)));
-  }, [queue, selectedQueueTags]);
+    return queue.filter((item) => {
+      if (verifiedFilter === 'verified' && !verifiedIds.includes(item.quiz.id)) return false;
+      if (verifiedFilter === 'unverified' && verifiedIds.includes(item.quiz.id)) return false;
+      if (selectedQueueTags.length === 0) return true;
+      const tagSet = new Set(selectedQueueTags);
+      return item.quiz.tags.some((t) => tagSet.has(t));
+    });
+  }, [queue, selectedQueueTags, verifiedFilter, verifiedIds]);
 
   const topQuiz = activeFilteredQueue[0] || null;
   const topQuizFlagUrl = topQuiz ? getQuizFlagIconUrl(topQuiz.quiz) : null;
 
   const filteredUnenrolledPool = useMemo(() => {
     const q = poolSearch.trim().toLowerCase();
-    if (!q) return unenrolledQuizzes.slice(0, 30);
-    return unenrolledQuizzes
-      .filter(
-        (quiz) =>
-          quiz.title.toLowerCase().includes(q) ||
-          quiz.countryOrRegion.toLowerCase().includes(q) ||
-          quiz.tags.some((t) => t.toLowerCase().includes(q))
-      )
-      .slice(0, 40);
-  }, [unenrolledQuizzes, poolSearch]);
+    const base = unenrolledQuizzes.filter((quiz) => {
+      if (verifiedFilter === 'verified' && !verifiedIds.includes(quiz.id)) return false;
+      if (verifiedFilter === 'unverified' && verifiedIds.includes(quiz.id)) return false;
+      if (!q) return true;
+      return (
+        quiz.title.toLowerCase().includes(q) ||
+        quiz.countryOrRegion.toLowerCase().includes(q) ||
+        quiz.tags.some((t) => t.toLowerCase().includes(q))
+      );
+    });
+    return base.slice(0, q ? 40 : 30);
+  }, [unenrolledQuizzes, poolSearch, verifiedFilter, verifiedIds]);
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 space-y-5 font-mono">
@@ -379,7 +394,24 @@ export const RevisionTab: React.FC<RevisionTabProps> = ({
       {/* Unenrolled Quizzes Pool with Search */}
       <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden">
         <div className="px-4 py-2.5 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-400">
-          <span>ADD TO REVISION QUEUE ({unenrolledQuizzes.length} available)</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span>ADD TO REVISION QUEUE ({unenrolledQuizzes.length} available)</span>
+            <div className="inline-flex rounded bg-slate-950 p-0.5 border border-slate-800 text-[10px]">
+              {(['all', 'verified', 'unverified'] as const).map((vf) => (
+                <button
+                  key={vf}
+                  onClick={() => setVerifiedFilter(vf)}
+                  className={`px-2 py-0.5 rounded font-bold cursor-pointer ${
+                    verifiedFilter === vf
+                      ? 'bg-indigo-600 text-white'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {vf.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="relative w-full sm:w-64">
             <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
@@ -400,6 +432,7 @@ export const RevisionTab: React.FC<RevisionTabProps> = ({
           <div className="divide-y divide-slate-800/60 max-h-96 overflow-y-auto">
             {filteredUnenrolledPool.map((q) => {
               const flagIconUrl = getQuizFlagIconUrl(q);
+              const isVerified = verifiedIds.includes(q.id);
               return (
                 <div
                   key={q.id}
@@ -416,6 +449,38 @@ export const RevisionTab: React.FC<RevisionTabProps> = ({
                     )}
                     <span className="text-xs font-bold text-slate-200">{q.title}</span>
                     <span className="text-[11px] text-slate-500">[{q.totalItems}]</span>
+                    {isOwnerMode ? (
+                      <button
+                        onClick={() => onToggleVerified(q.id)}
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold cursor-pointer ${
+                          isVerified
+                            ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                            : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                        }`}
+                      >
+                        {isVerified ? (
+                          <>
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                            VERIFIED
+                          </>
+                        ) : (
+                          <>
+                            <ShieldAlert className="w-2.5 h-2.5" />
+                            UNVERIFIED [VERIFY]
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <span
+                        className={`px-1.5 py-0.5 rounded border text-[10px] ${
+                          isVerified
+                            ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300 font-semibold'
+                            : 'bg-slate-950 border-slate-800 text-slate-500'
+                        }`}
+                      >
+                        {isVerified ? '✓ VERIFIED' : 'UNVERIFIED'}
+                      </span>
+                    )}
                     {q.tags.map((t) => (
                       <span
                         key={t}

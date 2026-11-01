@@ -5,16 +5,24 @@ import confetti from 'canvas-confetti';
 import {
   ArrowLeft,
   ArrowRight,
+  BarChart3,
+  BookOpen,
   BookmarkCheck,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock,
   Compass,
   Droplets,
   Eye,
   FastForward,
   Focus,
+  Layers,
+  Pause,
   Play,
   RotateCcw,
+  ShieldAlert,
+  ShieldCheck,
   SlidersHorizontal,
   Undo2,
   XCircle,
@@ -26,17 +34,23 @@ import type {
   ListAllDisplayStyle,
   ListAllOrderMode,
   MapDisplayStyle,
+  MegaDisambiguationMode,
   QuizAttempt,
   QuizConfig,
   QuizPlaySettings,
   SpecialCountryCitiesItem,
 } from '../types/quiz';
 import {
+  clearMegaProgressSnapshot,
   getTrackedPresetForQuiz,
   isAnswerMatch,
   isMatchingTrackedPreset,
   loadCustomGeoJson,
+  loadMegaProgressSnapshot,
+  loadUserMegaSlotOverrides,
+  saveMegaProgressSnapshot,
   saveTrackedPresetForQuiz,
+  saveUserMegaSlotOverrides,
 } from '../utils/storage';
 import {
   bboxesIntersect,
@@ -44,9 +58,12 @@ import {
   computeClosestUnitVectors,
   computeFeatureCollectionBBox,
   computeFeaturesBBox,
+  computeSpatialNeighborsMap,
   computeSubdivisionCentroid,
   featuresToSvgPath,
+  filterLakesIntersectingTerritory,
   isLineGeometry,
+  partitionIntoRegionalClusters,
   punchIslandHolesInLakes,
 } from '../utils/geometry';
 import {
@@ -57,10 +74,20 @@ import { getQuizFlagIconUrl } from '../utils/flagIcons';
 import { resolveAssetUrl } from '../utils/assetUrl';
 import { FlagVisualRenderer } from './FlagVisualRenderer';
 import { SpecialCitiesCanvas } from './SpecialCitiesCanvas';
+import { MegaProgressPanel } from './MegaProgressPanel';
 
 interface QuizPlayerProps {
   quiz: QuizConfig;
+  allQuizzes?: QuizConfig[];
   practiceSubset?: string[] | null;
+  verifiedIds?: string[];
+  isOwnerMode?: boolean;
+  onToggleVerified?: (id: string) => void;
+  globalMegaDefaultOverrides?: Record<string, string>;
+  onSaveGlobalMegaDefaultOverrides?: (
+    megaQuizId: string,
+    overrides: Record<string, string>
+  ) => void;
   onComplete: (attempt: QuizAttempt) => void;
   onExit: () => void;
   onNextInRevisionQueue?: () => void;
@@ -70,6 +97,13 @@ interface RegionStatus {
   name: string;
   state: 'pending' | 'correct' | 'missed';
   attempts: number;
+}
+
+interface MegaItemMeta {
+  key: string;
+  displayName: string;
+  widerRegion: string;
+  slotKey: string;
 }
 
 let cachedLakes: GeoJSON.FeatureCollection | null = null;
@@ -82,6 +116,7 @@ function MapBoundsController({
   targetLatLng,
   autoZoomTarget,
   fitTrigger,
+  onZoomChange,
 }: {
   geoJsonData: GeoJSON.FeatureCollection | null;
   cityPoints?: Array<{ lat: number; lng: number }>;
@@ -89,8 +124,18 @@ function MapBoundsController({
   targetLatLng: [number, number] | null;
   autoZoomTarget: boolean;
   fitTrigger: number;
+  onZoomChange?: (z: number) => void;
 }) {
   const map = useMap();
+
+  useEffect(() => {
+    const reportZoom = () => onZoomChange?.(map.getZoom());
+    reportZoom();
+    map.on('zoomend', reportZoom);
+    return () => {
+      map.off('zoomend', reportZoom);
+    };
+  }, [map, onZoomChange]);
 
   useEffect(() => {
     const container = map.getContainer();
@@ -274,9 +319,34 @@ const FLAG_DISPLAY_MODES_INFO: Array<{
   },
 ];
 
+const MEGA_DISAMBIGUATION_MODES_INFO: Array<{
+  id: MegaDisambiguationMode;
+  label: string;
+  shortDesc: string;
+}> = [
+  {
+    id: 'prompt-wider-region',
+    label: 'PROMPT_WIDER_REGION (DEFAULT)',
+    shortDesc:
+      'If a typed name exists in multiple regions, it does NOT tick off all of them; it prompts for "Name, Wider Region" (e.g. "Washington, Oregon").',
+  },
+  {
+    id: 'click-active-region',
+    label: 'CLICK_ACTIVE_REGION_FOCUS',
+    shortDesc:
+      'Click one country / state / LGA on the map at a time to lock focus to that region. Only names in the selected region are accepted.',
+  },
+];
+
 export const QuizPlayer: React.FC<QuizPlayerProps> = ({
   quiz,
+  allQuizzes = [],
   practiceSubset = null,
+  verifiedIds = [],
+  isOwnerMode = false,
+  onToggleVerified,
+  globalMegaDefaultOverrides = {},
+  onSaveGlobalMegaDefaultOverrides,
   onComplete,
   onExit,
   onNextInRevisionQueue,
@@ -284,21 +354,43 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
   const format = quiz.format || 'map-polygon';
   const isFlagQuiz = format === 'flag';
   const isSpecialCitiesQuiz = format === 'special-country-cities';
+  const isMegaQuiz = Boolean(quiz.isMegaQuiz || quiz.category === 'mega');
+  const isQuizVerified = Boolean(quiz.verified || verifiedIds.includes(quiz.id));
 
-  const [trackedPreset, setTrackedPreset] = useState<QuizPlaySettings>(() =>
-    getTrackedPresetForQuiz(quiz.id)
-  );
-  const [settings, setSettings] = useState<QuizPlaySettings>(() =>
-    getTrackedPresetForQuiz(quiz.id)
-  );
+  const [trackedPreset, setTrackedPreset] = useState<QuizPlaySettings>(() => {
+    const base = getTrackedPresetForQuiz(quiz.id);
+    return isMegaQuiz ? { ...base, mode: 'list-all' } : base;
+  });
+  const [settings, setSettings] = useState<QuizPlaySettings>(() => {
+    const base = getTrackedPresetForQuiz(quiz.id);
+    return isMegaQuiz ? { ...base, mode: 'list-all' } : base;
+  });
 
   const [hasStarted, setHasStarted] = useState<boolean>(false);
   const [showOptionsPanel, setShowOptionsPanel] = useState<boolean>(false);
+  const [showItemsList, setShowItemsList] = useState<boolean>(false);
+  const [showMegaSlotEditor, setShowMegaSlotEditor] = useState<boolean>(false);
+  const [showMegaProgressPanel, setShowMegaProgressPanel] = useState<boolean>(false);
+  const [slotSearchQuery, setSlotSearchQuery] = useState<string>('');
+
+  // Mega Quiz Slot Overrides (merged: global defaults -> user personal overrides)
+  const [slotOverrides, setSlotOverrides] = useState<Record<string, string>>(() => ({
+    ...globalMegaDefaultOverrides,
+    ...loadUserMegaSlotOverrides(quiz.id),
+  }));
+
+  useEffect(() => {
+    setSlotOverrides({
+      ...globalMegaDefaultOverrides,
+      ...loadUserMegaSlotOverrides(quiz.id),
+    });
+  }, [quiz.id, globalMegaDefaultOverrides]);
 
   const [geoJsonData, setGeoJsonData] = useState<GeoJSON.FeatureCollection | null>(null);
   const [backgroundGeoJson, setBackgroundGeoJson] = useState<GeoJSON.FeatureCollection | null>(
     null
   );
+  const [megaItemMetaMap, setMegaItemMetaMap] = useState<Record<string, MegaItemMeta>>({});
   const [specialCitiesItems, setSpecialCitiesItems] = useState<SpecialCountryCitiesItem[]>([]);
   const [specialRevealState, setSpecialRevealState] = useState<{
     outcome: 'correct' | 'missed';
@@ -310,6 +402,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
     cachedWorldCountries
   );
   const [showHydroOverlay, setShowHydroOverlay] = useState(true);
+  const [mapZoom, setMapZoom] = useState<number>(quiz.defaultZoom || 4);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -318,6 +411,21 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [regionStatuses, setRegionStatuses] = useState<Record<string, RegionStatus>>({});
   const [namedOrderList, setNamedOrderList] = useState<string[]>([]);
+  const [namedTimestamps, setNamedTimestamps] = useState<Record<string, number>>({});
+
+  // Mega Quiz Pause & Disambiguation States
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [activeSlotKey, setActiveSlotKey] = useState<string | null>(null);
+  const [pendingAmbiguousMatches, setPendingAmbiguousMatches] = useState<string[] | null>(
+    null
+  );
+
+  // Learn Mode States (Flash Reveal + Regional Bunch Sub-Quizzes)
+  const [learnFlashReveals, setLearnFlashReveals] = useState<Record<string, number>>({});
+  const [activeLearnClusterIdx, setActiveLearnClusterIdx] = useState<number | null>(null);
+  const [learnSubPracticeMode, setLearnSubPracticeMode] = useState<
+    'flash' | 'type-highlighted' | 'click-named' | 'list-all'
+  >('flash');
 
   const [inputValue, setInputValue] = useState('');
   const [feedbackBanner, setFeedbackBanner] = useState<{
@@ -340,16 +448,26 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const startTimeRef = useRef<number>(Date.now());
+  const accumulatedElapsedRef = useRef<number>(0);
   const quizFlagIcon = useMemo(() => getQuizFlagIconUrl(quiz), [quiz]);
 
   useEffect(() => {
-    const preset = getTrackedPresetForQuiz(quiz.id);
+    const basePreset = getTrackedPresetForQuiz(quiz.id);
+    const preset = isMegaQuiz ? { ...basePreset, mode: 'list-all' as const } : basePreset;
     setTrackedPreset(preset);
     setSettings(preset);
     setHasStarted(false);
     setShowOptionsPanel(false);
+    setShowItemsList(false);
+    setShowMegaSlotEditor(false);
+    setShowMegaProgressPanel(false);
     setSpecialRevealState(null);
-  }, [quiz.id]);
+    setIsPaused(false);
+    setActiveSlotKey(null);
+    setPendingAmbiguousMatches(null);
+    setActiveLearnClusterIdx(null);
+    setLearnSubPracticeMode('flash');
+  }, [quiz.id, isMegaQuiz]);
 
   // Load major lakes & reservoirs + world country outlines
   useEffect(() => {
@@ -404,13 +522,126 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
     return map;
   }, [quiz, specialCitiesItems]);
 
-  // Load quiz data
+  // Load quiz data (including synthesized Mega Quizzes)
   useEffect(() => {
     let cancelled = false;
     async function loadQuizResources() {
       setLoading(true);
       setError(null);
       try {
+        if (isMegaQuiz && quiz.megaSynthesisSlots && quiz.megaSynthesisSlots.length > 0) {
+          const quizLookup = new Map<string, QuizConfig>();
+          for (const q of allQuizzes) quizLookup.set(q.id, q);
+
+          const urlFetchCache = new Map<string, GeoJSON.FeatureCollection>();
+          const combinedFeatures: GeoJSON.Feature[] = [];
+          const metaMap: Record<string, MegaItemMeta> = {};
+
+          const uniqueUrls = new Set<string>();
+          for (const slot of quiz.megaSynthesisSlots) {
+            const chosenQuizId = slotOverrides[slot.slotKey] || slot.defaultQuizId;
+            const subQuiz = quizLookup.get(chosenQuizId);
+            if (subQuiz?.geoJsonUrl) uniqueUrls.add(subQuiz.geoJsonUrl);
+          }
+
+          const urlArray = Array.from(uniqueUrls);
+          const batchSize = 20;
+          for (let i = 0; i < urlArray.length; i += batchSize) {
+            const batch = urlArray.slice(i, i + batchSize);
+            await Promise.all(
+              batch.map(async (url) => {
+                try {
+                  const res = await fetch(resolveAssetUrl(url));
+                  if (res.ok) {
+                    const json = await res.json();
+                    if (json && Array.isArray(json.features)) {
+                      urlFetchCache.set(url, json);
+                    }
+                  }
+                } catch {
+                  // ignore individual fetch error
+                }
+              })
+            );
+          }
+
+          for (const slot of quiz.megaSynthesisSlots) {
+            const chosenQuizId = slotOverrides[slot.slotKey] || slot.defaultQuizId;
+            const subQuiz = quizLookup.get(chosenQuizId);
+            if (!subQuiz || !subQuiz.geoJsonUrl) continue;
+            const fc = urlFetchCache.get(subQuiz.geoJsonUrl);
+            if (!fc) continue;
+
+            let subFeatures = fc.features;
+            if (subQuiz.filterProperty && subQuiz.filterValue) {
+              const prop = subQuiz.filterProperty;
+              const val = subQuiz.filterValue.trim().toLowerCase();
+              subFeatures = subFeatures.filter(
+                (f) => String(f.properties?.[prop] || '').trim().toLowerCase() === val
+              );
+            }
+
+            const nameProp = subQuiz.nameProperty || 'name';
+            for (const f of subFeatures) {
+              const rawName = String(f.properties?.[nameProp] || '').trim();
+              if (!rawName) continue;
+              const compositeKey = `${slot.slotKey}::${rawName}`;
+              metaMap[compositeKey] = {
+                key: compositeKey,
+                displayName: rawName,
+                widerRegion: slot.slotLabel,
+                slotKey: slot.slotKey,
+              };
+              combinedFeatures.push({
+                ...f,
+                properties: {
+                  ...(f.properties || {}),
+                  name: compositeKey,
+                  displayName: rawName,
+                  widerRegion: slot.slotLabel,
+                  slotKey: slot.slotKey,
+                },
+              });
+            }
+          }
+
+          const finalCollection: GeoJSON.FeatureCollection = {
+            type: 'FeatureCollection',
+            features: combinedFeatures,
+          };
+
+          if (!cancelled) {
+            setMegaItemMetaMap(metaMap);
+            setGeoJsonData(finalCollection);
+            setBackgroundGeoJson(null);
+            const allKeys = Object.keys(metaMap);
+
+            const savedSnap = loadMegaProgressSnapshot(quiz.id);
+            if (savedSnap && savedSnap.namedOrderList.length > 0) {
+              const snapSet = new Set(savedSnap.namedOrderList);
+              const statuses: Record<string, RegionStatus> = {};
+              for (const k of allKeys) {
+                statuses[k] = {
+                  name: k,
+                  state: snapSet.has(k) ? 'correct' : 'pending',
+                  attempts: 0,
+                };
+              }
+              const remQueue = allKeys.filter((k) => !snapSet.has(k));
+              setRegionStatuses(statuses);
+              setQueue(remQueue);
+              setNamedOrderList(savedSnap.namedOrderList.filter((k) => Boolean(metaMap[k])));
+              setNamedTimestamps(savedSnap.namedTimestamps || {});
+              accumulatedElapsedRef.current = savedSnap.elapsedSeconds || 0;
+              setElapsedSeconds(savedSnap.elapsedSeconds || 0);
+              setActiveSlotKey(savedSnap.activeSlotKey || null);
+            } else {
+              initializeSessionFromNames(allKeys, practiceSubset);
+            }
+          }
+          return;
+        }
+
         if (format === 'flag') {
           const names = (quiz.flagItems || []).map((f) => f.name);
           if (!cancelled) {
@@ -505,6 +736,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
         };
 
         if (!cancelled) {
+          setMegaItemMetaMap({});
           setGeoJsonData(finalCollection);
           setBackgroundGeoJson(bgData);
           const uniqueNames = Array.from(
@@ -528,85 +760,27 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [quiz.id, quiz.filterProperty, quiz.filterValue, practiceSubset, format]);
+  }, [quiz.id, quiz.filterProperty, quiz.filterValue, practiceSubset, format, isMegaQuiz, slotOverrides]);
 
   function getFeatureName(feature: GeoJSON.Feature): string {
     const props = feature.properties || {};
+    if (isMegaQuiz && props.name) return String(props.name).trim();
     const propKey = quiz.nameProperty || 'name';
     const raw = props[propKey];
     return raw ? String(raw).trim() : '';
+  }
+
+  function formatDisplayItemName(itemKey: string): string {
+    if (!isMegaQuiz) return itemKey;
+    const meta = megaItemMetaMap[itemKey];
+    if (!meta) return itemKey;
+    return `${meta.displayName} (${meta.widerRegion})`;
   }
 
   const isRiverOrLineQuiz = useMemo(() => {
     if (!geoJsonData || format !== 'map-polygon') return false;
     return isLineGeometry(geoJsonData.features) || quiz.category === 'landscapes';
   }, [geoJsonData, format, quiz.category]);
-
-  const localWaterLakes = useMemo<GeoJSON.FeatureCollection | null>(() => {
-    if (!waterLakes || isRiverOrLineQuiz) return null;
-    let quizBBox = null;
-    if (geoJsonData && geoJsonData.features.length > 0) {
-      quizBBox = computeFeatureCollectionBBox(geoJsonData);
-    } else if (quiz.cityItems && quiz.cityItems.length > 0) {
-      const lats = quiz.cityItems.map((c) => c.lat);
-      const lngs = quiz.cityItems.map((c) => c.lng);
-      quizBBox = {
-        minLat: Math.min(...lats),
-        maxLat: Math.max(...lats),
-        minLon: Math.min(...lngs),
-        maxLon: Math.max(...lngs),
-      };
-    }
-    if (!quizBBox) return null;
-
-    const matching = waterLakes.features.filter((f) => {
-      const fb = computeFeaturesBBox([f]);
-      return bboxesIntersect(quizBBox!, fb, 1.2);
-    });
-    if (matching.length === 0) return null;
-
-    const matchedCollection: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: matching,
-    };
-
-    return punchIslandHolesInLakes(matchedCollection, geoJsonData);
-  }, [waterLakes, geoJsonData, quiz.cityItems, isRiverOrLineQuiz]);
-
-  const effectiveGeoJsonData = useMemo<GeoJSON.FeatureCollection | null>(() => {
-    if (!geoJsonData) return null;
-    if (!showHydroOverlay || !localWaterLakes || isRiverOrLineQuiz || format !== 'map-polygon') {
-      return geoJsonData;
-    }
-    if (geoJsonData.features.length > 160) return geoJsonData;
-    return clipSubdivisionsAgainstLakes(geoJsonData, localWaterLakes);
-  }, [geoJsonData, showHydroOverlay, localWaterLakes, isRiverOrLineQuiz, format]);
-
-  const featuresByName = useMemo(() => {
-    const map: Record<string, GeoJSON.Feature[]> = {};
-    if (!effectiveGeoJsonData || format !== 'map-polygon') return map;
-    for (const f of effectiveGeoJsonData.features) {
-      const n = getFeatureName(f);
-      if (!n) continue;
-      if (!map[n]) map[n] = [];
-      map[n].push(f);
-    }
-    return map;
-  }, [effectiveGeoJsonData, format, quiz.nameProperty]);
-
-  const subdivisionCentroids = useMemo(() => {
-    const map: Record<string, [number, number]> = {};
-    if (format === 'map-point' && quiz.cityItems) {
-      for (const c of quiz.cityItems) {
-        map[c.name] = [c.lat, c.lng];
-      }
-      return map;
-    }
-    for (const [name, feats] of Object.entries(featuresByName)) {
-      map[name] = computeSubdivisionCentroid(feats);
-    }
-    return map;
-  }, [featuresByName, format, quiz.cityItems]);
 
   const countryOutlineGeoJson = useMemo<GeoJSON.FeatureCollection | null>(() => {
     if (backgroundGeoJson && geoJsonData) {
@@ -635,10 +809,120 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
     return { type: 'FeatureCollection', features: matches };
   }, [worldCountries, backgroundGeoJson, geoJsonData, quiz.tags, quiz.countryOrRegion]);
 
+  // True polygon-intersection Hydro filtering (removes lakes like Lake Balkhash that exist completely outside the quiz territory)
+  const localWaterLakes = useMemo<GeoJSON.FeatureCollection | null>(() => {
+    if (!waterLakes || isRiverOrLineQuiz) return null;
+    const territoryPolygonFc =
+      format === 'map-polygon' && geoJsonData && geoJsonData.features.length > 0
+        ? geoJsonData
+        : countryOutlineGeoJson || geoJsonData;
+
+    const intersectingLakes = filterLakesIntersectingTerritory(waterLakes, territoryPolygonFc);
+    if (!intersectingLakes) return null;
+
+    return punchIslandHolesInLakes(intersectingLakes, geoJsonData);
+  }, [waterLakes, geoJsonData, countryOutlineGeoJson, format, isRiverOrLineQuiz]);
+
+  const effectiveGeoJsonData = useMemo<GeoJSON.FeatureCollection | null>(() => {
+    if (!geoJsonData) return null;
+    if (!showHydroOverlay || !localWaterLakes || isRiverOrLineQuiz || format !== 'map-polygon') {
+      return geoJsonData;
+    }
+    if (geoJsonData.features.length > 160) return geoJsonData;
+    return clipSubdivisionsAgainstLakes(geoJsonData, localWaterLakes);
+  }, [geoJsonData, showHydroOverlay, localWaterLakes, isRiverOrLineQuiz, format]);
+
+  const featuresByName = useMemo(() => {
+    const map: Record<string, GeoJSON.Feature[]> = {};
+    if (!effectiveGeoJsonData || format !== 'map-polygon') return map;
+    for (const f of effectiveGeoJsonData.features) {
+      const n = getFeatureName(f);
+      if (!n) continue;
+      if (!map[n]) map[n] = [];
+      map[n].push(f);
+    }
+    return map;
+  }, [effectiveGeoJsonData, format, quiz.nameProperty, isMegaQuiz]);
+
+  const subdivisionCentroids = useMemo(() => {
+    const map: Record<string, [number, number]> = {};
+    if (format === 'map-point' && quiz.cityItems) {
+      for (const c of quiz.cityItems) {
+        map[c.name] = [c.lat, c.lng];
+      }
+      return map;
+    }
+    for (const [name, feats] of Object.entries(featuresByName)) {
+      map[name] = computeSubdivisionCentroid(feats);
+    }
+    return map;
+  }, [featuresByName, format, quiz.cityItems]);
+
+  // Regional Bunches for Learn Mode
+  const learnClusterCount = settings.learnClusterCount || 1;
+  const learnClusters = useMemo(() => {
+    if (settings.mode !== 'learn' || learnClusterCount <= 1) return [];
+    const itemKeys = Object.keys(subdivisionCentroids);
+    if (itemKeys.length === 0 && isFlagQuiz && quiz.flagItems) {
+      const total = quiz.flagItems.length;
+      const k = Math.min(learnClusterCount, total);
+      const size = Math.ceil(total / k);
+      return Array.from({ length: k }, (_, idx) => {
+        const slice = quiz.flagItems!.slice(idx * size, (idx + 1) * size);
+        return {
+          clusterIndex: idx,
+          label: `Bunch ${idx + 1} (${slice.length})`,
+          itemKeys: slice.map((s) => s.name),
+          center: [0, 0] as [number, number],
+        };
+      }).filter((c) => c.itemKeys.length > 0);
+    }
+    const naturalGroupByItem: Record<string, string> = {};
+    for (const name of itemKeys) {
+      const feats = featuresByName[name];
+      const p = feats?.[0]?.properties || {};
+      const regionHint = p.region || p.widerRegion || undefined;
+      if (regionHint) naturalGroupByItem[name] = String(regionHint);
+    }
+    return partitionIntoRegionalClusters(
+      itemKeys,
+      subdivisionCentroids,
+      learnClusterCount,
+      Object.keys(naturalGroupByItem).length > 0 ? naturalGroupByItem : undefined
+    );
+  }, [settings.mode, learnClusterCount, subdivisionCentroids, featuresByName, isFlagQuiz, quiz.flagItems]);
+
+  const featureBBoxesByName = useMemo(() => {
+    const boxes: Record<string, ReturnType<typeof computeFeaturesBBox>> = {};
+    for (const [name, feats] of Object.entries(featuresByName)) {
+      boxes[name] = computeFeaturesBBox(feats);
+    }
+    return boxes;
+  }, [featuresByName]);
+
+  // Spatial Neighbor Map & Feature Span Map for Mega Quizzes
+  const megaSpatialNeighbors = useMemo(() => {
+    if (!isMegaQuiz || Object.keys(featureBBoxesByName).length === 0) return {};
+    return computeSpatialNeighborsMap(featureBBoxesByName, subdivisionCentroids);
+  }, [isMegaQuiz, featureBBoxesByName, subdivisionCentroids]);
+
+  const featureSpansByName = useMemo(() => {
+    const spans: Record<string, number> = {};
+    for (const [name, b] of Object.entries(featureBBoxesByName)) {
+      spans[name] = Math.max(b.maxLat - b.minLat, b.maxLon - b.minLon);
+    }
+    return spans;
+  }, [featureBBoxesByName]);
+
   function initializeSessionFromNames(
     allNames: string[],
-    subset: string[] | null = practiceSubset
+    subset: string[] | null = practiceSubset,
+    clearMegaSaved: boolean = false
   ) {
+    if (clearMegaSaved && isMegaQuiz) {
+      clearMegaProgressSnapshot(quiz.id);
+    }
+
     const activeNames =
       subset && subset.length > 0
         ? allNames.filter((n) => subset.includes(n))
@@ -659,29 +943,46 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
     setCurrentIndex(0);
     setRegionStatuses(statuses);
     setNamedOrderList([]);
+    setNamedTimestamps({});
+    setPendingAmbiguousMatches(null);
     setInputValue('');
     setIsFinished(false);
+    setIsPaused(false);
     setFeedbackBanner(null);
     setLastWrongSubmission(null);
     setSpecialRevealState(null);
+    setLearnFlashReveals({});
     setSessionSeed(Date.now());
+    accumulatedElapsedRef.current = 0;
     startTimeRef.current = Date.now();
     setElapsedSeconds(0);
     setTimeout(() => inputRef.current?.focus(), 60);
   }
 
-  function startOrRestartQuiz(subset: string[] | null = practiceSubset) {
+  function startOrRestartQuiz(
+    subset: string[] | null = practiceSubset,
+    forceFreshMega: boolean = false
+  ) {
     setHasStarted(true);
     setShowOptionsPanel(false);
+    setIsPaused(false);
+
+    if (isMegaQuiz && !forceFreshMega && namedOrderList.length > 0 && !isFinished) {
+      startTimeRef.current = Date.now();
+      setTimeout(() => inputRef.current?.focus(), 60);
+      return;
+    }
+
     if (format === 'flag') {
-      initializeSessionFromNames((quiz.flagItems || []).map((f) => f.name), subset);
+      initializeSessionFromNames((quiz.flagItems || []).map((f) => f.name), subset, true);
     } else if (format === 'special-country-cities') {
       initializeSessionFromNames(
         specialCitiesItems.map((i) => i.countryName),
-        subset
+        subset,
+        true
       );
     } else if (format === 'map-point') {
-      initializeSessionFromNames((quiz.cityItems || []).map((c) => c.name), subset);
+      initializeSessionFromNames((quiz.cityItems || []).map((c) => c.name), subset, true);
     } else if (geoJsonData) {
       const uniqueNames = Array.from(
         new Set(
@@ -690,17 +991,75 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
             .filter((name) => name.length > 0)
         )
       );
-      initializeSessionFromNames(uniqueNames, subset);
+      initializeSessionFromNames(uniqueNames, subset, true);
+    }
+  }
+
+  function togglePauseMegaQuiz() {
+    if (!hasStarted || isFinished) return;
+    if (!isPaused) {
+      const nowElapsed =
+        accumulatedElapsedRef.current +
+        Math.floor((Date.now() - startTimeRef.current) / 1000);
+      accumulatedElapsedRef.current = nowElapsed;
+      setElapsedSeconds(nowElapsed);
+      setIsPaused(true);
+    } else {
+      startTimeRef.current = Date.now();
+      setIsPaused(false);
+      setTimeout(() => inputRef.current?.focus(), 50);
     }
   }
 
   useEffect(() => {
-    if (!hasStarted || loading || isFinished || queue.length === 0) return;
+    if (!hasStarted || loading || isFinished || isPaused || queue.length === 0) return;
     const interval = setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      const currentTotal =
+        accumulatedElapsedRef.current +
+        Math.floor((Date.now() - startTimeRef.current) / 1000);
+      setElapsedSeconds(currentTotal);
     }, 500);
     return () => clearInterval(interval);
-  }, [hasStarted, loading, isFinished, queue.length]);
+  }, [hasStarted, loading, isFinished, isPaused, queue.length]);
+
+  // Persist Mega Quiz progress snapshot automatically
+  useEffect(() => {
+    if (!isMegaQuiz || !hasStarted || isFinished || loading) return;
+    saveMegaProgressSnapshot({
+      quizId: quiz.id,
+      updatedAt: Date.now(),
+      elapsedSeconds,
+      namedOrderList,
+      namedTimestamps,
+      slotOverrides,
+      activeSlotKey,
+    });
+  }, [
+    isMegaQuiz,
+    hasStarted,
+    isFinished,
+    loading,
+    quiz.id,
+    elapsedSeconds,
+    namedOrderList,
+    namedTimestamps,
+    slotOverrides,
+    activeSlotKey,
+  ]);
+
+  const effectivePlayMode =
+    settings.mode === 'learn'
+      ? learnSubPracticeMode === 'flash'
+        ? 'learn'
+        : learnSubPracticeMode
+      : settings.mode;
+
+  // Enforce Autozoom ONLY in type-highlighted mode
+  useEffect(() => {
+    if (effectivePlayMode !== 'type-highlighted' && autoZoomTarget) {
+      setAutoZoomTarget(false);
+    }
+  }, [effectivePlayMode, autoZoomTarget]);
 
   const currentTargetName = queue[currentIndex] || null;
 
@@ -710,17 +1069,20 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
   const activeListAllOrderMode: ListAllOrderMode =
     settings.listAllOrderMode || 'named-order';
   const isBlindListAll =
-    settings.mode === 'list-all' &&
+    effectivePlayMode === 'list-all' &&
     activeListAllDisplayStyle === 'no-map-list' &&
     activeListAllOrderMode === 'blind';
 
+  const activeMegaDisambiguationMode: MegaDisambiguationMode =
+    settings.megaDisambiguationMode || 'prompt-wider-region';
+
   const isSingleOutlineInCountry =
-    settings.mode === 'type-highlighted' &&
+    effectivePlayMode === 'type-highlighted' &&
     ((settings.mapDisplayStyle === 'all-outlines' && Boolean(settings.isolateTargetInCountry)) ||
       settings.mapDisplayStyle === 'isolated-outline-in-country');
 
   const isSingleCentroidOnly =
-    settings.mode === 'type-highlighted' &&
+    effectivePlayMode === 'type-highlighted' &&
     settings.mapDisplayStyle === 'centroid-dot' &&
     Boolean(settings.isolateTargetInCountry);
 
@@ -768,6 +1130,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
   const isTrackedRun = useMemo(
     () =>
       !practiceSubset &&
+      settings.mode !== 'learn' &&
       isMatchingTrackedPreset(settings, trackedPreset, isFlagQuiz, isSpecialCitiesQuiz),
     [practiceSubset, settings, trackedPreset, isFlagQuiz, isSpecialCitiesQuiz]
   );
@@ -793,11 +1156,12 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
   function finishQuiz(finalStatuses: Record<string, RegionStatus>) {
     setIsFinished(true);
+    setIsPaused(false);
     setSpecialRevealState(null);
-    const durationSeconds = Math.max(
-      1,
-      Math.floor((Date.now() - startTimeRef.current) / 1000)
-    );
+    if (isMegaQuiz) {
+      clearMegaProgressSnapshot(quiz.id);
+    }
+    const durationSeconds = Math.max(1, elapsedSeconds || 1);
     const values = Object.values(finalStatuses);
     const totalCount = values.length;
     const correctCount = values.filter((s) => s.state === 'correct').length;
@@ -813,7 +1177,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
       });
     }
 
-    if (isTrackedRun) {
+    if (isTrackedRun || isMegaQuiz) {
       const attempt: QuizAttempt = {
         id: `${quiz.id}-${Date.now()}`,
         quizId: quiz.id,
@@ -832,46 +1196,133 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
     }
   }
 
+  // Helper to evaluate Mega Quiz answers (handles "Name, Wider Region" and Active Region Lock)
+  function evaluateMegaListAllInput(rawInput: string): {
+    status: 'single-match' | 'ambiguous' | 'no-match' | 'need-active-region';
+    matchedKey?: string;
+    ambiguousKeys?: string[];
+  } {
+    const trimmed = rawInput.trim();
+    if (!trimmed) return { status: 'no-match' };
+
+    if (activeMegaDisambiguationMode === 'click-active-region') {
+      if (!activeSlotKey) {
+        return { status: 'need-active-region' };
+      }
+      const inSlot = queue.filter((k) => {
+        const meta = megaItemMetaMap[k];
+        if (!meta || meta.slotKey !== activeSlotKey) return false;
+        return isAnswerMatch(trimmed, meta.displayName, effectiveAliases);
+      });
+      if (inSlot.length >= 1) {
+        return { status: 'single-match', matchedKey: inSlot[0] };
+      }
+      return { status: 'no-match' };
+    }
+
+    // Mode 1: prompt-wider-region ("Name" or "Name, Wider Region")
+    if (trimmed.includes(',')) {
+      const [namePart, ...regionParts] = trimmed.split(',');
+      const cleanName = namePart.trim();
+      const cleanRegion = regionParts.join(',').trim();
+      if (cleanName && cleanRegion) {
+        const qualifiedMatches = queue.filter((k) => {
+          const meta = megaItemMetaMap[k];
+          if (!meta) return false;
+          const nameOk = isAnswerMatch(cleanName, meta.displayName, effectiveAliases);
+          const regOk =
+            isAnswerMatch(cleanRegion, meta.widerRegion, effectiveAliases) ||
+            isAnswerMatch(cleanRegion, meta.slotKey, effectiveAliases);
+          return nameOk && regOk;
+        });
+        if (qualifiedMatches.length === 1) {
+          return { status: 'single-match', matchedKey: qualifiedMatches[0] };
+        }
+      }
+    }
+
+    // Check unqualified name across all pending items
+    const matches = queue.filter((k) => {
+      const meta = megaItemMetaMap[k];
+      const targetStr = meta ? meta.displayName : k;
+      return isAnswerMatch(trimmed, targetStr, effectiveAliases);
+    });
+
+    if (matches.length === 1) {
+      return { status: 'single-match', matchedKey: matches[0] };
+    }
+    if (matches.length > 1) {
+      return { status: 'ambiguous', ambiguousKeys: matches };
+    }
+    return { status: 'no-match' };
+  }
+
+  function recordListAllCorrectMatch(matchedKey: string) {
+    setLastWrongSubmission(null);
+    setPendingAmbiguousMatches(null);
+    const updatedStatuses: Record<string, RegionStatus> = {
+      ...regionStatuses,
+      [matchedKey]: {
+        ...regionStatuses[matchedKey],
+        state: 'correct',
+      },
+    };
+    setRegionStatuses(updatedStatuses);
+    setNamedOrderList((prev) => (prev.includes(matchedKey) ? prev : [...prev, matchedKey]));
+    setNamedTimestamps((prev) => ({ ...prev, [matchedKey]: elapsedSeconds }));
+
+    const label = formatDisplayItemName(matchedKey);
+    if (!isBlindListAll) {
+      setFeedbackBanner({ type: 'correct', text: `Found: ${label}` });
+    } else {
+      setFeedbackBanner(null);
+    }
+    const nextQueue = queue.filter((n) => n !== matchedKey);
+    advanceOrFinish(nextQueue, updatedStatuses, 0, isBlindListAll);
+  }
+
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const val = e.target.value;
     setInputValue(val);
 
-    if (isFinished) return;
+    if (isFinished || isPaused) return;
 
     // LIST ALL Mode with Instant Match
-    if (settings.mode === 'list-all' && settings.typingMatchMode === 'instant-match') {
+    if (effectivePlayMode === 'list-all' && settings.typingMatchMode === 'instant-match') {
+      if (isMegaQuiz) {
+        const res = evaluateMegaListAllInput(val);
+        if (res.status === 'single-match' && res.matchedKey) {
+          recordListAllCorrectMatch(res.matchedKey);
+        } else if (res.status === 'ambiguous' && res.ambiguousKeys) {
+          setPendingAmbiguousMatches(res.ambiguousKeys);
+          setFeedbackBanner({
+            type: 'skipped',
+            text: `Multiple "${val.trim()}" (${res.ambiguousKeys.length} remaining) — add ", Wider Region" (e.g. "${val.trim()}, ${
+              megaItemMetaMap[res.ambiguousKeys[0]]?.widerRegion || 'Region'
+            }")`,
+          });
+        }
+        return;
+      }
+
       const matchedPending = queue.find((itemName) =>
         isAnswerMatch(val, itemName, effectiveAliases)
       );
       if (matchedPending) {
-        setLastWrongSubmission(null);
-        const updatedStatuses: Record<string, RegionStatus> = {
-          ...regionStatuses,
-          [matchedPending]: {
-            ...regionStatuses[matchedPending],
-            state: 'correct',
-          },
-        };
-        setRegionStatuses(updatedStatuses);
-        setNamedOrderList((prev) =>
-          prev.includes(matchedPending) ? prev : [...prev, matchedPending]
-        );
-        if (!isBlindListAll) {
-          setFeedbackBanner({ type: 'correct', text: `Found: ${matchedPending}` });
-        } else {
-          setFeedbackBanner(null);
-        }
-        const nextQueue = queue.filter((n) => n !== matchedPending);
-        advanceOrFinish(nextQueue, updatedStatuses, 0, isBlindListAll);
+        recordListAllCorrectMatch(matchedPending);
       }
       return;
     }
 
     if (!currentTargetName || isSpecialCitiesQuiz) return;
 
+    const targetDisplayName = isMegaQuiz
+      ? megaItemMetaMap[currentTargetName]?.displayName || currentTargetName
+      : currentTargetName;
+
     if (
       settings.typingMatchMode === 'instant-match' &&
-      isAnswerMatch(val, currentTargetName, effectiveAliases)
+      isAnswerMatch(val, targetDisplayName, effectiveAliases)
     ) {
       setLastWrongSubmission(null);
       markCurrentAsCorrect();
@@ -895,7 +1346,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
   }
 
   function handleEnterSubmit() {
-    if (isFinished) return;
+    if (isFinished || isPaused) return;
 
     if (isSpecialCitiesQuiz && specialRevealState) {
       handleAdvanceFromSpecialReveal();
@@ -906,43 +1357,52 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
     if (!trimmed) return;
 
     // LIST ALL Mode (Any Order)
-    if (settings.mode === 'list-all') {
-      const matchedPending = queue.find((itemName) =>
-        isAnswerMatch(trimmed, itemName, effectiveAliases)
-      );
-      if (matchedPending) {
-        setLastWrongSubmission(null);
-        const updatedStatuses: Record<string, RegionStatus> = {
-          ...regionStatuses,
-          [matchedPending]: {
-            ...regionStatuses[matchedPending],
-            state: 'correct',
-          },
-        };
-        setRegionStatuses(updatedStatuses);
-        setNamedOrderList((prev) =>
-          prev.includes(matchedPending) ? prev : [...prev, matchedPending]
-        );
-        if (!isBlindListAll) {
-          setFeedbackBanner({ type: 'correct', text: `Found: ${matchedPending}` });
-        } else {
-          setFeedbackBanner({ type: 'correct', text: `Recorded submission` });
+    if (effectivePlayMode === 'list-all') {
+      if (isMegaQuiz) {
+        const res = evaluateMegaListAllInput(trimmed);
+        if (res.status === 'single-match' && res.matchedKey) {
+          recordListAllCorrectMatch(res.matchedKey);
+          return;
         }
-        const nextQueue = queue.filter((n) => n !== matchedPending);
-        advanceOrFinish(nextQueue, updatedStatuses, 0, isBlindListAll);
-        return;
+        if (res.status === 'need-active-region') {
+          setFeedbackBanner({
+            type: 'skipped',
+            text: 'Click a country / state / LGA on the map first to select your active region!',
+          });
+          return;
+        }
+        if (res.status === 'ambiguous' && res.ambiguousKeys) {
+          setPendingAmbiguousMatches(res.ambiguousKeys);
+          setFeedbackBanner({
+            type: 'skipped',
+            text: `Multiple items named "${trimmed}" (${res.ambiguousKeys.length} remaining). Specify "${trimmed}, Wider Region" (e.g. "${trimmed}, ${
+              megaItemMetaMap[res.ambiguousKeys[0]]?.widerRegion || 'Region'
+            }")`,
+          });
+          return;
+        }
+      } else {
+        const matchedPending = queue.find((itemName) =>
+          isAnswerMatch(trimmed, itemName, effectiveAliases)
+        );
+        if (matchedPending) {
+          recordListAllCorrectMatch(matchedPending);
+          return;
+        }
       }
 
-      const matchedAlreadyAnswered = Object.keys(regionStatuses).find(
-        (itemName) =>
-          regionStatuses[itemName].state === 'correct' &&
-          isAnswerMatch(trimmed, itemName, effectiveAliases)
-      );
+      const matchedAlreadyAnswered = Object.keys(regionStatuses).find((itemName) => {
+        if (regionStatuses[itemName].state !== 'correct') return false;
+        const disp = isMegaQuiz
+          ? megaItemMetaMap[itemName]?.displayName || itemName
+          : itemName;
+        return isAnswerMatch(trimmed, disp, effectiveAliases);
+      });
       if (matchedAlreadyAnswered) {
         if (!isBlindListAll) {
           setFeedbackBanner({
             type: 'skipped',
-            text: `Already found: ${matchedAlreadyAnswered}`,
+            text: `Already found: ${formatDisplayItemName(matchedAlreadyAnswered)}`,
           });
         } else {
           setFeedbackBanner({
@@ -1002,7 +1462,11 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
       return;
     }
 
-    if (isAnswerMatch(trimmed, currentTargetName, effectiveAliases)) {
+    const targetDisplayName = isMegaQuiz
+      ? megaItemMetaMap[currentTargetName]?.displayName || currentTargetName
+      : currentTargetName;
+
+    if (isAnswerMatch(trimmed, targetDisplayName, effectiveAliases)) {
       setLastWrongSubmission(null);
       markCurrentAsCorrect();
     } else {
@@ -1024,7 +1488,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
       });
       setFeedbackBanner({
         type: 'missed',
-        text: `Incorrect ("${trimmed}") → Answer: ${missedTarget}`,
+        text: `Incorrect ("${trimmed}") → Answer: ${formatDisplayItemName(missedTarget)}`,
       });
 
       const nextQueue = queue.filter((_, idx) => idx !== currentIndex);
@@ -1049,7 +1513,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
     }
     setFeedbackBanner({
       type: 'correct',
-      text: `Marked ${targetName} as CORRECT`,
+      text: `Marked ${formatDisplayItemName(targetName)} as CORRECT`,
     });
 
     if (isFinished) {
@@ -1069,7 +1533,11 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
       },
     };
     setRegionStatuses(updatedStatuses);
-    setFeedbackBanner({ type: 'correct', text: currentTargetName });
+    setNamedOrderList((prev) =>
+      prev.includes(currentTargetName) ? prev : [...prev, currentTargetName]
+    );
+    setNamedTimestamps((prev) => ({ ...prev, [currentTargetName]: elapsedSeconds }));
+    setFeedbackBanner({ type: 'correct', text: formatDisplayItemName(currentTargetName) });
 
     const nextQueue = queue.filter((_, idx) => idx !== currentIndex);
     advanceOrFinish(nextQueue, updatedStatuses, currentIndex);
@@ -1084,8 +1552,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
   }
 
   function handleGiveUpCurrent() {
-    if (settings.mode === 'list-all') {
-      // In List-All mode, Give Up / Submit marks all remaining pending items as missed and finishes the run
+    if (effectivePlayMode === 'list-all') {
       const updatedStatuses: Record<string, RegionStatus> = { ...regionStatuses };
       for (const remName of queue) {
         updatedStatuses[remName] = {
@@ -1125,18 +1592,93 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
     setFeedbackBanner({
       type: 'missed',
-      text: `Missed: ${currentTargetName}`,
+      text: `Missed: ${formatDisplayItemName(currentTargetName)}`,
     });
 
     const nextQueue = queue.filter((_, idx) => idx !== currentIndex);
     advanceOrFinish(nextQueue, updatedStatuses, currentIndex);
   }
 
+  function triggerLearnFlashReveal(clickedName: string) {
+    const now = Date.now();
+    setLearnFlashReveals((prev) => ({ ...prev, [clickedName]: now }));
+    setFeedbackBanner({
+      type: 'correct',
+      text: `FLASH CHECK: ${formatDisplayItemName(clickedName)}`,
+    });
+    setTimeout(() => {
+      setLearnFlashReveals((prev) => {
+        if (prev[clickedName] !== now) return prev;
+        const copy = { ...prev };
+        delete copy[clickedName];
+        return copy;
+      });
+    }, 1850);
+  }
+
+  function selectLearnBunch(
+    clusterIdx: number | null,
+    practiceMode: 'flash' | 'type-highlighted' | 'click-named' | 'list-all' = learnSubPracticeMode
+  ) {
+    setActiveLearnClusterIdx(clusterIdx);
+    setLearnSubPracticeMode(practiceMode);
+    const allNames =
+      format === 'flag'
+        ? (quiz.flagItems || []).map((f) => f.name)
+        : format === 'map-point'
+        ? (quiz.cityItems || []).map((c) => c.name)
+        : Object.keys(featuresByName);
+    const subset =
+      clusterIdx !== null && learnClusters[clusterIdx]
+        ? learnClusters[clusterIdx].itemKeys
+        : null;
+    initializeSessionFromNames(allNames, subset, false);
+  }
+
   function handleTargetClickSelection(clickedName: string) {
-    if (!hasStarted || isFinished || settings.mode === 'list-all' || !currentTargetName) return;
+    if (!hasStarted || isFinished || isPaused) return;
+
+    // Learn Mode (Flash-Check on click)
+    if (effectivePlayMode === 'learn') {
+      if (
+        activeLearnClusterIdx !== null &&
+        learnClusters[activeLearnClusterIdx] &&
+        !learnClusters[activeLearnClusterIdx].itemKeys.includes(clickedName)
+      ) {
+        // Clicking an item in another bunch switches to that bunch!
+        const targetBunchIdx = learnClusters.findIndex((c) =>
+          c.itemKeys.includes(clickedName)
+        );
+        if (targetBunchIdx !== -1) {
+          selectLearnBunch(targetBunchIdx, learnSubPracticeMode);
+        }
+      }
+      triggerLearnFlashReveal(clickedName);
+      return;
+    }
+
+    // Mega Quiz List-All Active Region Selection Mode
+    if (
+      effectivePlayMode === 'list-all' &&
+      isMegaQuiz &&
+      activeMegaDisambiguationMode === 'click-active-region'
+    ) {
+      const meta = megaItemMetaMap[clickedName];
+      if (meta) {
+        setActiveSlotKey(meta.slotKey);
+        setFeedbackBanner({
+          type: 'correct',
+          text: `Active Region Locked: ${meta.widerRegion}`,
+        });
+        setTimeout(() => inputRef.current?.focus(), 20);
+      }
+      return;
+    }
+
+    if (effectivePlayMode === 'list-all' || !currentTargetName) return;
     const currentStatus = regionStatuses[clickedName]?.state;
 
-    if (settings.mode === 'type-highlighted') {
+    if (effectivePlayMode === 'type-highlighted') {
       if (currentStatus === 'pending' && clickedName !== currentTargetName) {
         const idxInQueue = queue.indexOf(clickedName);
         if (idxInQueue !== -1) {
@@ -1165,7 +1707,9 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
         setRegionStatuses(updatedStatuses);
         setFeedbackBanner({
           type: 'missed',
-          text: `Selected ${clickedName} (target: ${currentTargetName})`,
+          text: `Selected ${formatDisplayItemName(clickedName)} (target: ${formatDisplayItemName(
+            currentTargetName
+          )})`,
         });
         const nextQueue = queue.filter((_, idx) => idx !== currentIndex);
         advanceOrFinish(nextQueue, updatedStatuses, currentIndex);
@@ -1180,7 +1724,9 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
         });
         setFeedbackBanner({
           type: 'missed',
-          text: `Selected ${clickedName} — 1 attempt left for ${currentTargetName}`,
+          text: `Selected ${formatDisplayItemName(
+            clickedName
+          )} — 1 attempt left for ${formatDisplayItemName(currentTargetName)}`,
         });
       }
     }
@@ -1189,7 +1735,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Tab') {
       e.preventDefault();
-      if (settings.mode !== 'list-all') {
+      if (effectivePlayMode !== 'list-all') {
         handleSkip();
       }
     } else if (e.key === 'Enter') {
@@ -1197,7 +1743,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
       if (
         isSpecialCitiesQuiz ||
         settings.typingMatchMode === 'enter-submit' ||
-        settings.mode === 'list-all'
+        effectivePlayMode === 'list-all'
       ) {
         handleEnterSubmit();
       }
@@ -1231,13 +1777,69 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
   const currentAccuracy =
     answeredCount > 0 ? Math.round((correctCount / answeredCount) * 100) : 100;
 
+  // Surrounded unnamed items in Mega Quiz List-All mode (indicator dot when all spatial neighbors are named)
+  const surroundedUnnamedKeys = useMemo(() => {
+    const set = new Set<string>();
+    if (!isMegaQuiz || effectivePlayMode !== 'list-all' || correctCount === 0) return set;
+    for (const [k, st] of Object.entries(regionStatuses)) {
+      if (st.state !== 'pending') continue;
+      const neighbors = megaSpatialNeighbors[k];
+      if (!neighbors || neighbors.length === 0) continue;
+      const allNeighborsNamed = neighbors.every(
+        (nb) => regionStatuses[nb]?.state === 'correct'
+      );
+      if (allNeighborsNamed) {
+        set.add(k);
+      }
+    }
+    return set;
+  }, [isMegaQuiz, effectivePlayMode, correctCount, regionStatuses, megaSpatialNeighbors]);
+
+  // Active Slot Progress for Mega Quiz click-active-region mode
+  const activeSlotStats = useMemo(() => {
+    if (!isMegaQuiz || !activeSlotKey) return null;
+    const keysInSlot = Object.keys(megaItemMetaMap).filter(
+      (k) => megaItemMetaMap[k]?.slotKey === activeSlotKey
+    );
+    if (keysInSlot.length === 0) return null;
+    const namedInSlot = keysInSlot.filter(
+      (k) => regionStatuses[k]?.state === 'correct'
+    ).length;
+    const widerLabel = megaItemMetaMap[keysInSlot[0]]?.widerRegion || activeSlotKey;
+    const pct = Math.round((namedInSlot / keysInSlot.length) * 100);
+    return {
+      slotKey: activeSlotKey,
+      widerLabel,
+      named: namedInSlot,
+      total: keysInSlot.length,
+      pct,
+    };
+  }, [isMegaQuiz, activeSlotKey, megaItemMetaMap, regionStatuses]);
+
   const alphabeticalAllNames = useMemo(
     () =>
       Object.keys(regionStatuses).sort((a, b) =>
-        a.localeCompare(b, undefined, { sensitivity: 'base' })
+        formatDisplayItemName(a).localeCompare(formatDisplayItemName(b), undefined, {
+          sensitivity: 'base',
+        })
       ),
-    [regionStatuses]
+    [regionStatuses, megaItemMetaMap, isMegaQuiz]
   );
+
+  const allQuizItemsForDisplay = useMemo(() => {
+    if (format === 'flag' && quiz.flagItems) {
+      return quiz.flagItems.map((f) => f.name).sort((a, b) => a.localeCompare(b));
+    }
+    if (format === 'special-country-cities') {
+      return specialCitiesItems.map((i) => i.countryName).sort((a, b) => a.localeCompare(b));
+    }
+    if (format === 'map-point' && quiz.cityItems) {
+      return quiz.cityItems.map((c) => c.name).sort((a, b) => a.localeCompare(b));
+    }
+    return Object.keys(featuresByName)
+      .map((k) => formatDisplayItemName(k))
+      .sort((a, b) => a.localeCompare(b));
+  }, [format, quiz.flagItems, quiz.cityItems, specialCitiesItems, featuresByName, megaItemMetaMap]);
 
   const formatClock = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -1295,13 +1897,14 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
     !isFlagQuiz &&
     !isSpecialCitiesQuiz &&
     !loading &&
-    (settings.mode === 'click-named' ||
-      (settings.mode === 'list-all' && activeListAllDisplayStyle !== 'no-map-list') ||
-      (settings.mode === 'type-highlighted' &&
+    (effectivePlayMode === 'learn' ||
+      effectivePlayMode === 'click-named' ||
+      (effectivePlayMode === 'list-all' && activeListAllDisplayStyle !== 'no-map-list') ||
+      (effectivePlayMode === 'type-highlighted' &&
         settings.mapDisplayStyle !== 'isolated-shape' &&
         settings.mapDisplayStyle !== 'unit-vectors'));
 
-  const mapLayerSyncKey = `${quiz.id}-${quiz.filterValue || 'all'}-${currentIndex}-${answeredCount}-${settings.mode}-${settings.mapDisplayStyle}-${Boolean(settings.isolateTargetInCountry)}-${activeListAllDisplayStyle}-${Boolean(settings.listAllShowOuterBorder ?? true)}-${hasStarted}-${showHydroOverlay}`;
+  const mapLayerSyncKey = `${quiz.id}-${quiz.filterValue || 'all'}-${currentIndex}-${answeredCount}-${effectivePlayMode}-${settings.mapDisplayStyle}-${Boolean(settings.isolateTargetInCountry)}-${activeListAllDisplayStyle}-${Boolean(settings.listAllShowOuterBorder ?? true)}-${hasStarted}-${showHydroOverlay}-${activeLearnClusterIdx ?? 'all'}-${activeSlotKey ?? 'none'}-${Object.keys(learnFlashReveals).join(',')}`;
 
   return (
     <div className="flex flex-col h-[calc(100dvh-56px)] bg-slate-950 text-slate-100 overflow-hidden font-mono">
@@ -1327,26 +1930,87 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
               {quiz.title}
             </h2>
             <span
-              className={`hidden md:inline-block px-1.5 py-0.5 text-[10px] rounded border shrink-0 ${
-                isTrackedRun
-                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                  : 'bg-slate-800 border-slate-700 text-slate-400'
+              onClick={
+                isOwnerMode && onToggleVerified
+                  ? () => onToggleVerified(quiz.id)
+                  : undefined
+              }
+              title={
+                isOwnerMode
+                  ? 'Click to toggle Verified Data status (Owner Mode)'
+                  : isQuizVerified
+                  ? 'Human-verified dataset'
+                  : 'Unverified automated dataset'
+              }
+              className={`hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded border shrink-0 ${
+                isOwnerMode ? 'cursor-pointer hover:opacity-80' : ''
+              } ${
+                isQuizVerified
+                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 font-bold'
+                  : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
               }`}
             >
-              {isTrackedRun ? 'REVISION_TRACKED' : 'UNTRACKED_VARIANT'}
+              {isQuizVerified ? (
+                <>
+                  <ShieldCheck className="w-3 h-3" />
+                  VERIFIED DATA
+                </>
+              ) : (
+                <>
+                  <ShieldAlert className="w-3 h-3" />
+                  UNVERIFIED DATA
+                </>
+              )}
             </span>
           </div>
         </div>
 
-        {/* PLAY + OPTIONS + Map Controls */}
+        {/* PLAY + PAUSE + PROGRESS + OPTIONS + Map Controls */}
         <div className="flex items-center gap-1.5 flex-wrap">
           <button
-            onClick={() => startOrRestartQuiz(practiceSubset)}
+            onClick={() => startOrRestartQuiz(practiceSubset, hasStarted)}
             className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition cursor-pointer"
           >
             <Play className="w-3 h-3 fill-current" />
             <span>{hasStarted ? 'RESTART' : 'PLAY'}</span>
           </button>
+
+          {isMegaQuiz && hasStarted && !isFinished && (
+            <button
+              onClick={togglePauseMegaQuiz}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-bold border transition cursor-pointer ${
+                isPaused
+                  ? 'bg-emerald-600 border-emerald-400 text-white'
+                  : 'bg-amber-500/20 border-amber-400/50 text-amber-300 hover:bg-amber-500/30'
+              }`}
+            >
+              {isPaused ? (
+                <>
+                  <Play className="w-3 h-3 fill-current" />
+                  <span>RESUME</span>
+                </>
+              ) : (
+                <>
+                  <Pause className="w-3 h-3" />
+                  <span>PAUSE</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {isMegaQuiz && (
+            <button
+              onClick={() => setShowMegaProgressPanel((v) => !v)}
+              className={`inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded text-xs font-bold border transition cursor-pointer ${
+                showMegaProgressPanel
+                  ? 'bg-emerald-500/25 border-emerald-400 text-emerald-300'
+                  : 'bg-slate-800 border-slate-700 text-emerald-300 hover:bg-slate-700'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">PROGRESS & TIMELAPSE</span>
+            </button>
+          )}
 
           <button
             onClick={() => setShowOptionsPanel((v) => !v)}
@@ -1377,7 +2041,8 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                 </button>
               )}
 
-              {settings.mode !== 'list-all' && (
+              {/* AUTO-ZOOM is strictly restricted to type-highlighted mode where the target location is already given */}
+              {effectivePlayMode === 'type-highlighted' && (
                 <button
                   onClick={() => setAutoZoomTarget((v) => !v)}
                   className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs border transition cursor-pointer ${
@@ -1418,21 +2083,147 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
               </>
             )}
           </div>
-          <div className="flex items-center gap-1 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
+          <div
+            className={`flex items-center gap-1 px-2 py-1 rounded bg-slate-950 border ${
+              isPaused
+                ? 'border-amber-500/50 text-amber-300 font-bold'
+                : 'border-slate-800 text-slate-300'
+            }`}
+          >
             <Clock className="w-3.5 h-3.5 text-indigo-400" />
             {formatClock(elapsedSeconds)}
+            {isPaused && <span className="text-[10px] ml-1">[PAUSED]</span>}
           </div>
         </div>
       </div>
 
+      {/* LEARN MODE BUNCH SELECTOR & SUB-PRACTICE BAR */}
+      {hasStarted && !isFinished && !loading && settings.mode === 'learn' && (
+        <div className="bg-slate-900/95 border-b border-slate-800 px-3 py-1.5 z-10 flex flex-col gap-1.5">
+          <div className="max-w-5xl mx-auto w-full flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold text-[11px]">
+                <BookOpen className="w-3 h-3" />
+                LEARN_MODE
+              </span>
+              <span className="text-slate-400 hidden sm:inline">
+                {learnSubPracticeMode === 'flash'
+                  ? 'Click any item to flash its name for 1.8s'
+                  : `Practicing ${
+                      activeLearnClusterIdx !== null && learnClusters[activeLearnClusterIdx]
+                        ? learnClusters[activeLearnClusterIdx].label
+                        : 'All Items'
+                    }`}
+              </span>
+            </div>
+
+            {/* Drill Mode Selector for Current Bunch */}
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-slate-500 mr-1">BUNCH DRILL:</span>
+              {(
+                [
+                  { id: 'flash', label: 'FLASH CLICK' },
+                  { id: 'type-highlighted', label: 'TYPE' },
+                  { id: 'click-named', label: 'CLICK' },
+                  { id: 'list-all', label: 'LIST' },
+                ] as const
+              ).map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => selectLearnBunch(activeLearnClusterIdx, m.id)}
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold border transition cursor-pointer ${
+                    learnSubPracticeMode === m.id
+                      ? 'bg-emerald-600 border-emerald-400 text-white'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {learnClusters.length > 1 && (
+            <div className="max-w-5xl mx-auto w-full flex items-center gap-1.5 overflow-x-auto pb-0.5">
+              <span className="text-[10px] text-slate-500 shrink-0">
+                BUNCHES ({learnClusters.length}):
+              </span>
+              <button
+                type="button"
+                onClick={() => selectLearnBunch(null, learnSubPracticeMode)}
+                className={`px-2 py-0.5 rounded text-[11px] font-bold border shrink-0 cursor-pointer ${
+                  activeLearnClusterIdx === null
+                    ? 'bg-indigo-600 border-indigo-400 text-white'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                ALL ({Object.keys(subdivisionCentroids).length || totalCount})
+              </button>
+              {learnClusters.map((c, idx) => (
+                <button
+                  key={c.clusterIndex}
+                  type="button"
+                  onClick={() => selectLearnBunch(idx, learnSubPracticeMode)}
+                  className={`px-2.5 py-0.5 rounded text-[11px] font-bold border shrink-0 cursor-pointer ${
+                    activeLearnClusterIdx === idx
+                      ? 'bg-amber-500/25 border-amber-400 text-amber-200'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  #{idx + 1}: {c.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* MEGA QUIZ CLICK-ACTIVE-REGION FOCUS BAR */}
+      {hasStarted &&
+        !isFinished &&
+        !loading &&
+        isMegaQuiz &&
+        effectivePlayMode === 'list-all' &&
+        activeMegaDisambiguationMode === 'click-active-region' && (
+          <div className="bg-slate-950 border-b border-indigo-500/30 px-3 py-1.5 z-10">
+            <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 font-bold text-[10px]">
+                  ACTIVE_REGION_LOCK
+                </span>
+                {activeSlotStats ? (
+                  <span className="text-white font-bold">
+                    Current Region: <span className="text-amber-300">{activeSlotStats.widerLabel}</span>{' '}
+                    — {activeSlotStats.named}/{activeSlotStats.total} ({activeSlotStats.pct}% done)
+                  </span>
+                ) : (
+                  <span className="text-amber-300">
+                    Click any country / state / LGA on the map to lock focus to that region!
+                  </span>
+                )}
+              </div>
+
+              {activeSlotStats && (
+                <div className="w-36 h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+                  <div
+                    className="h-full bg-emerald-500 transition-all"
+                    style={{ width: `${activeSlotStats.pct}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       {/* Input / Prompt Strip — Feedback Banner placed on its own row underneath so the input box always keeps full width on PC */}
-      {hasStarted && !isFinished && !loading && (
+      {hasStarted && !isFinished && !loading && effectivePlayMode !== 'learn' && (
         <div className="bg-slate-900 border-b border-slate-800 px-2.5 py-1.5 sm:px-5 sm:py-2 z-10 space-y-1.5">
           {/* Row 1: Full-width Input Bar & Action Buttons */}
           <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 sm:gap-2">
             {isSpecialCitiesQuiz ||
-            settings.mode === 'type-highlighted' ||
-            settings.mode === 'list-all' ? (
+            effectivePlayMode === 'type-highlighted' ||
+            effectivePlayMode === 'list-all' ? (
               <>
                 <div className="relative flex-1 flex items-center gap-1.5">
                   <div className="relative flex-1">
@@ -1440,17 +2231,33 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                       ref={inputRef}
                       type="text"
                       value={inputValue}
+                      disabled={isPaused}
                       onChange={handleInputChange}
                       onKeyDown={handleKeyDown}
                       enterKeyHint="send"
                       placeholder={
-                        isSpecialCitiesQuiz
+                        isPaused
+                          ? 'MEGA QUIZ PAUSED — Press RESUME to continue...'
+                          : isSpecialCitiesQuiz
                           ? specialRevealState
                             ? 'Press ENTER for next country...'
                             : 'Guess country from city pattern...'
                           : isBlindListAll
                           ? 'BLIND LIST MODE: Type items, then press SUBMIT when done...'
-                          : settings.mode === 'list-all'
+                          : isMegaQuiz &&
+                            effectivePlayMode === 'list-all' &&
+                            activeMegaDisambiguationMode === 'click-active-region'
+                          ? activeSlotStats
+                            ? `Type subdivision in ${activeSlotStats.widerLabel}...`
+                            : 'Click a region on the map first to start naming...'
+                          : isMegaQuiz && effectivePlayMode === 'list-all'
+                          ? pendingAmbiguousMatches && pendingAmbiguousMatches.length > 0
+                            ? `Multiple matches! Type "Name, Wider Region" (e.g. "${inputValue.trim()}, ${
+                                megaItemMetaMap[pendingAmbiguousMatches[0]]?.widerRegion ||
+                                'Region'
+                              }")...`
+                            : 'MEGA LIST MODE: Type any item (or "Name, Wider Region" if shared)...'
+                          : effectivePlayMode === 'list-all'
                           ? 'LIST MODE: Type any item in any order...'
                           : settings.typingMatchMode === 'enter-submit'
                           ? 'Type answer & press ENTER...'
@@ -1460,7 +2267,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                       autoCorrect="off"
                       autoCapitalize="off"
                       spellCheck={false}
-                      className="w-full pl-3 pr-16 py-1.5 rounded-lg bg-slate-950 border border-indigo-500/50 focus:border-indigo-400 text-white placeholder-slate-500 text-base sm:text-sm outline-none"
+                      className="w-full pl-3 pr-16 py-1.5 rounded-lg bg-slate-950 border border-indigo-500/50 focus:border-indigo-400 text-white placeholder-slate-500 text-base sm:text-sm outline-none disabled:opacity-50"
                     />
                     {!isBlindListAll && (
                       <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-500 pointer-events-none">
@@ -1481,7 +2288,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                   ) : (
                     (isSpecialCitiesQuiz ||
                       settings.typingMatchMode === 'enter-submit' ||
-                      settings.mode === 'list-all') && (
+                      effectivePlayMode === 'list-all') && (
                       <button
                         type="button"
                         onClick={handleEnterSubmit}
@@ -1494,7 +2301,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1.5">
-                  {settings.mode !== 'list-all' && (
+                  {effectivePlayMode !== 'list-all' && (
                     <button
                       type="button"
                       onClick={handleSkip}
@@ -1522,7 +2329,9 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                     ) : (
                       <>
                         <Eye className="w-3.5 h-3.5" />
-                        {settings.mode === 'list-all' ? `GIVE UP (${queue.length})` : 'REVEAL'}
+                        {effectivePlayMode === 'list-all'
+                          ? `GIVE UP (${queue.length})`
+                          : 'REVEAL'}
                       </>
                     )}
                   </button>
@@ -1533,7 +2342,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-slate-400">TARGET:</span>
                   <span className="text-sm sm:text-base font-bold text-amber-300">
-                    {currentTargetName}
+                    {currentTargetName ? formatDisplayItemName(currentTargetName) : ''}
                   </span>
                   <span className="text-xs text-slate-500">(rem: {queue.length})</span>
                   {settings.mapDisplayStyle === 'minefield-no-outlines' && (
@@ -1563,7 +2372,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
             )}
           </div>
 
-          {/* Row 2: Dedicated Feedback & Mark-as-Correct Banner Row (Never crowds the input bar) */}
+          {/* Row 2: Dedicated Feedback & Mark-as-Correct Banner Row */}
           {feedbackBanner && (
             <div className="max-w-4xl mx-auto flex items-center justify-between gap-2">
               <div
@@ -1695,14 +2504,65 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
           </div>
         )}
 
+        {/* MEGA QUIZ EXPANDABLE PROGRESS & TIMELAPSE VIEWER */}
+        {isMegaQuiz && showMegaProgressPanel && geoJsonData && (
+          <MegaProgressPanel
+            geoJsonData={geoJsonData}
+            getFeatureKey={getFeatureName}
+            getFeatureSlot={(f) =>
+              String(f.properties?.widerRegion || f.properties?.slotKey || 'Other')
+            }
+            regionStatuses={regionStatuses}
+            timeline={namedOrderList.map((k, idx) => ({
+              elapsedSeconds: namedTimestamps[k] ?? 0,
+              correctCount: idx + 1,
+            }))}
+            elapsedSeconds={elapsedSeconds}
+            totalCount={totalCount}
+            correctCount={correctCount}
+            activeRegionSlot={activeSlotKey}
+            onSelectRegionSlot={(slot) => setActiveSlotKey(slot)}
+            onClose={() => setShowMegaProgressPanel(false)}
+          />
+        )}
+
         {/* PRE-GAME LAUNCH & OPTIONS MODAL */}
         {(!hasStarted || showOptionsPanel) && !loading && !error && (
           <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 z-30 overflow-y-auto">
             <div className="max-w-2xl w-full bg-slate-900 border border-slate-800 rounded-xl p-5 sm:p-6 shadow-2xl space-y-5 my-auto max-h-[90dvh] overflow-y-auto">
               <div className="flex items-start justify-between gap-4 border-b border-slate-800 pb-3.5">
                 <div>
-                  <div className="text-[11px] text-indigo-400 font-bold">
-                    QUIZ_LAUNCH_CONFIGURATION
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-indigo-400 font-bold">
+                      {isMegaQuiz ? 'MEGA_QUIZ_CONFIGURATION' : 'QUIZ_LAUNCH_CONFIGURATION'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={
+                        isOwnerMode && onToggleVerified
+                          ? () => onToggleVerified(quiz.id)
+                          : undefined
+                      }
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border ${
+                        isOwnerMode ? 'cursor-pointer hover:opacity-80' : 'cursor-default'
+                      } ${
+                        isQuizVerified
+                          ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 font-bold'
+                          : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                      }`}
+                    >
+                      {isQuizVerified ? (
+                        <>
+                          <ShieldCheck className="w-3 h-3" />
+                          VERIFIED DATA {isOwnerMode ? '(CLICK TO UNVERIFY)' : ''}
+                        </>
+                      ) : (
+                        <>
+                          <ShieldAlert className="w-3 h-3" />
+                          UNVERIFIED DATA {isOwnerMode ? '(CLICK TO VERIFY)' : ''}
+                        </>
+                      )}
+                    </button>
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
                     {quizFlagIcon && (
@@ -1714,8 +2574,23 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                     )}
                     <h3 className="text-lg font-bold text-white">{quiz.title}</h3>
                   </div>
-                  <div className="text-xs text-slate-400 mt-0.5">
-                    {totalCount} items •{' '}
+                  <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-2">
+                    <span>
+                      {quiz.title} ({totalCount}){' '}
+                      <button
+                        type="button"
+                        onClick={() => setShowItemsList((v) => !v)}
+                        className="underline font-bold text-indigo-300 hover:text-indigo-200 cursor-pointer ml-1 inline-flex items-center gap-0.5"
+                      >
+                        {showItemsList ? 'Hide' : 'Show'}
+                        {showItemsList ? (
+                          <ChevronUp className="w-3 h-3" />
+                        ) : (
+                          <ChevronDown className="w-3 h-3" />
+                        )}
+                      </button>
+                    </span>
+                    <span>•</span>
                     {isTrackedRun ? (
                       <span className="text-emerald-400 font-bold">
                         Matches Revision Tracked Preset
@@ -1738,17 +2613,39 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                 )}
               </div>
 
-              {/* Primary Launch Button + Toggle Options */}
+              {/* Primary Launch Button + Resume Saved Mega Progress + Toggle Options */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-                <button
-                  onClick={() => startOrRestartQuiz(practiceSubset)}
-                  className="flex-1 inline-flex items-center justify-center gap-2 py-3 px-5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-lg shadow-indigo-600/25 transition cursor-pointer"
-                >
-                  <Play className="w-4 h-4 fill-current" />
-                  <span>
-                    {hasStarted ? 'RESTART WITH SELECTED MODE' : 'PLAY QUIZ'}
-                  </span>
-                </button>
+                {isMegaQuiz && !hasStarted && namedOrderList.length > 0 ? (
+                  <>
+                    <button
+                      onClick={() => startOrRestartQuiz(practiceSubset, false)}
+                      className="flex-1 inline-flex items-center justify-center gap-2 py-3 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm shadow-lg transition cursor-pointer"
+                    >
+                      <Play className="w-4 h-4 fill-current" />
+                      <span>
+                        RESUME SAVED RUN ({namedOrderList.length}/{totalCount} •{' '}
+                        {formatClock(elapsedSeconds)})
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => startOrRestartQuiz(practiceSubset, true)}
+                      className="inline-flex items-center justify-center gap-1.5 py-3 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>NEW RUN</span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => startOrRestartQuiz(practiceSubset, hasStarted)}
+                    className="flex-1 inline-flex items-center justify-center gap-2 py-3 px-5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-lg shadow-indigo-600/25 transition cursor-pointer"
+                  >
+                    <Play className="w-4 h-4 fill-current" />
+                    <span>
+                      {hasStarted ? 'RESTART WITH SELECTED MODE' : 'PLAY QUIZ'}
+                    </span>
+                  </button>
+                )}
 
                 <button
                   onClick={() => setShowOptionsPanel((v) => !v)}
@@ -1773,6 +2670,12 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                         TOP_{settings.specialCitiesCount || 5}_CITIES
                       </strong>
                       <span className="text-slate-600"> • </span>
+                      <strong className="text-emerald-300">
+                        {(settings.cityPopulationBasis || 'metro') === 'city-proper'
+                          ? 'CITY_PROPER_POP'
+                          : 'METROPOLITAN_AREA_POP'}
+                      </strong>
+                      <span className="text-slate-600"> • </span>
                       <strong className="text-amber-300">
                         {(settings.showCapitalStar ?? true) ? 'CAPITAL_STAR_ON' : 'NO_STAR'}
                       </strong>
@@ -1788,12 +2691,6 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                           ? 'ABS_POP_ON'
                           : 'ABS_POP_OFF'}
                       </strong>
-                      <span className="text-slate-600"> • </span>
-                      <strong className="text-emerald-300">
-                        {(settings.showScaleReference ?? true)
-                          ? 'SCALE_REF_ON'
-                          : 'SCALE_REF_OFF'}
-                      </strong>
                     </>
                   ) : (
                     <>
@@ -1802,6 +2699,10 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                           ? 'TYPE_QUIZ'
                           : settings.mode === 'list-all'
                           ? 'LIST_ALL_QUIZ'
+                          : settings.mode === 'learn'
+                          ? `LEARN_MODE (${learnClusterCount} BUNCH${
+                              learnClusterCount > 1 ? 'ES' : ''
+                            })`
                           : 'CLICK_QUIZ'}
                       </strong>
                       {(settings.mode === 'type-highlighted' ||
@@ -1826,31 +2727,38 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                               [{activeListAllOrderMode.toUpperCase()}]
                             </span>
                           )}
+                          {isMegaQuiz && (
+                            <span className="ml-1.5 text-sky-300 font-bold">
+                              [{activeMegaDisambiguationMode.toUpperCase()}]
+                            </span>
+                          )}
                         </>
                       )}
-                      {!isFlagQuiz && settings.mode !== 'list-all' && (
-                        <>
-                          <span className="text-slate-600"> • </span>
-                          <strong className="text-emerald-300">
-                            {settings.mapDisplayStyle.toUpperCase()}
-                          </strong>
-                          {settings.mode === 'type-highlighted' &&
-                            (settings.mapDisplayStyle === 'all-outlines' ||
-                              settings.mapDisplayStyle === 'centroid-dot') &&
-                            settings.isolateTargetInCountry && (
-                              <span className="ml-1.5 text-amber-300 font-bold">
-                                [SINGLE_TARGET_ONLY]
-                              </span>
-                            )}
-                          {settings.mode === 'type-highlighted' &&
-                            settings.mapDisplayStyle === 'isolated-shape' &&
-                            settings.randomRotation && (
-                              <span className="ml-1.5 text-amber-300 font-bold">
-                                [RANDOM_ROTATION]
-                              </span>
-                            )}
-                        </>
-                      )}
+                      {!isFlagQuiz &&
+                        settings.mode !== 'list-all' &&
+                        settings.mode !== 'learn' && (
+                          <>
+                            <span className="text-slate-600"> • </span>
+                            <strong className="text-emerald-300">
+                              {settings.mapDisplayStyle.toUpperCase()}
+                            </strong>
+                            {settings.mode === 'type-highlighted' &&
+                              (settings.mapDisplayStyle === 'all-outlines' ||
+                                settings.mapDisplayStyle === 'centroid-dot') &&
+                              settings.isolateTargetInCountry && (
+                                <span className="ml-1.5 text-amber-300 font-bold">
+                                  [SINGLE_TARGET_ONLY]
+                                </span>
+                              )}
+                            {settings.mode === 'type-highlighted' &&
+                              settings.mapDisplayStyle === 'isolated-shape' &&
+                              settings.randomRotation && (
+                                <span className="ml-1.5 text-amber-300 font-bold">
+                                  [RANDOM_ROTATION]
+                                </span>
+                              )}
+                          </>
+                        )}
                       {isFlagQuiz && settings.mode === 'type-highlighted' && (
                         <>
                           <span className="text-slate-600"> • </span>
@@ -1868,6 +2776,107 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                   )}
                 </div>
               </div>
+
+              {/* Expandable Mega Quiz Sub-Quiz Substitution Editor */}
+              {isMegaQuiz && quiz.megaSynthesisSlots && quiz.megaSynthesisSlots.length > 0 && (
+                <div className="bg-slate-950 border border-slate-800 rounded-lg p-3.5 space-y-3 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[11px] text-amber-300 font-bold flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5" />
+                        CONSTITUENT SUB-QUIZ SUBSTITUTION ({quiz.megaSynthesisSlots.length} REGIONS)
+                      </span>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Data is pulled live from your existing quizzes. Substitute alternative subdivision levels per country/state below.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowMegaSlotEditor((v) => !v)}
+                      className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-amber-300 font-bold text-[11px] cursor-pointer"
+                    >
+                      {showMegaSlotEditor ? 'HIDE SUB-QUIZZES ▲' : 'VIEW / SUBSTITUTE SUB-QUIZZES ▼'}
+                    </button>
+                  </div>
+
+                  {showMegaSlotEditor && (
+                    <div className="space-y-2.5 pt-2 border-t border-slate-800">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <input
+                          type="text"
+                          value={slotSearchQuery}
+                          onChange={(e) => setSlotSearchQuery(e.target.value)}
+                          placeholder="Filter regions (e.g. Slovenia, France, United Kingdom)..."
+                          className="flex-1 min-w-[200px] px-2.5 py-1.5 rounded bg-slate-900 border border-slate-800 text-xs text-white outline-none focus:border-indigo-500"
+                        />
+                        {isOwnerMode && onSaveGlobalMegaDefaultOverrides && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onSaveGlobalMegaDefaultOverrides(quiz.id, slotOverrides)
+                            }
+                            className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] cursor-pointer"
+                          >
+                            SET CURRENT CHOICES AS GLOBAL DEFAULT FOR EVERYONE
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
+                        {quiz.megaSynthesisSlots
+                          .filter(
+                            (s) =>
+                              !slotSearchQuery.trim() ||
+                              s.slotLabel
+                                .toLowerCase()
+                                .includes(slotSearchQuery.trim().toLowerCase())
+                          )
+                          .map((slot) => {
+                            const selectedId =
+                              slotOverrides[slot.slotKey] || slot.defaultQuizId;
+                            return (
+                              <div
+                                key={slot.slotKey}
+                                className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-900 border border-slate-800/80 rounded px-2.5 py-1.5"
+                              >
+                                <div className="font-bold text-slate-200 flex items-center gap-1.5">
+                                  <span>{slot.slotLabel}</span>
+                                  {slot.candidateQuizIds.length > 1 && (
+                                    <span className="px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-300 text-[9px]">
+                                      {slot.candidateQuizIds.length} OPTIONS
+                                    </span>
+                                  )}
+                                </div>
+                                <select
+                                  value={selectedId}
+                                  onChange={(e) => {
+                                    const nextId = e.target.value;
+                                    const nextOverrides = {
+                                      ...slotOverrides,
+                                      [slot.slotKey]: nextId,
+                                    };
+                                    setSlotOverrides(nextOverrides);
+                                    saveUserMegaSlotOverrides(quiz.id, nextOverrides);
+                                  }}
+                                  className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:border-indigo-500"
+                                >
+                                  {slot.candidateQuizIds.map((candId) => {
+                                    const candQuiz = allQuizzes.find((q) => q.id === candId);
+                                    return (
+                                      <option key={candId} value={candId}>
+                                        {candQuiz ? candQuiz.title : candId}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Expanded Options Customization Section */}
               {showOptionsPanel && (
@@ -1900,6 +2909,55 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                           }
                           className="w-32 accent-indigo-500 cursor-pointer"
                         />
+                      </div>
+
+                      {/* 2. Metropolitan Area vs City Proper Population Standard */}
+                      <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-2">
+                        <div className="font-bold text-white">
+                          2. POPULATION BOUNDARY STANDARD
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSettings((s) => ({ ...s, cityPopulationBasis: 'metro' }))
+                            }
+                            className={`p-2.5 rounded-lg border text-left transition cursor-pointer ${
+                              (settings.cityPopulationBasis || 'metro') === 'metro'
+                                ? 'bg-indigo-600/25 border-indigo-400 text-white'
+                                : 'bg-slate-950 border-slate-800 text-slate-400'
+                            }`}
+                          >
+                            <div className="font-bold text-xs">
+                              METROPOLITAN AREA (DEFAULT)
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">
+                              Urban agglomeration / metropolitan area population.
+                            </div>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSettings((s) => ({
+                                ...s,
+                                cityPopulationBasis: 'city-proper',
+                              }))
+                            }
+                            className={`p-2.5 rounded-lg border text-left transition cursor-pointer ${
+                              settings.cityPopulationBasis === 'city-proper'
+                                ? 'bg-indigo-600/25 border-indigo-400 text-white'
+                                : 'bg-slate-950 border-slate-800 text-slate-400'
+                            }`}
+                          >
+                            <div className="font-bold text-xs">
+                              CITY PROPER (MUNICIPALITY)
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">
+                              Administrative municipality / city proper population.
+                            </div>
+                          </button>
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -1990,20 +3048,20 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                             {(settings.showScaleReference ?? true) ? 'ON' : 'OFF'}
                           </div>
                           <div className="text-[10px] text-slate-400 mt-1">
-                            Shows Hispaniola / Sicily / Corsica in corner at same scale.
+                            Collision-free Hispaniola / Sicily / Corsica silhouette at same scale.
                           </div>
                         </button>
                       </div>
                     </div>
                   ) : (
                     <>
-                      {/* 1. Structure: Type vs Click vs List All */}
+                      {/* 1. Structure: Type vs Click vs List All vs Learn */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-2">
                           <div className="text-[11px] text-slate-400 font-bold">
                             1. QUIZ_STRUCTURE
                           </div>
-                          <div className="flex gap-1.5">
+                          <div className="grid grid-cols-4 gap-1.5">
                             <button
                               onClick={() =>
                                 setSettings((s) => ({
@@ -2016,7 +3074,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                                       : s.mapDisplayStyle,
                                 }))
                               }
-                              className={`flex-1 py-2 px-1.5 rounded font-bold cursor-pointer ${
+                              className={`py-2 px-1 rounded font-bold cursor-pointer ${
                                 settings.mode === 'type-highlighted'
                                   ? 'bg-indigo-600 text-white'
                                   : 'bg-slate-900 text-slate-400 border border-slate-800'
@@ -2035,7 +3093,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                                       : 'all-outlines',
                                 }))
                               }
-                              className={`flex-1 py-2 px-1.5 rounded font-bold cursor-pointer ${
+                              className={`py-2 px-1 rounded font-bold cursor-pointer ${
                                 settings.mode === 'click-named'
                                   ? 'bg-indigo-600 text-white'
                                   : 'bg-slate-900 text-slate-400 border border-slate-800'
@@ -2054,13 +3112,29 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                                   listAllOrderMode: s.listAllOrderMode || 'named-order',
                                 }))
                               }
-                              className={`flex-1 py-2 px-1.5 rounded font-bold cursor-pointer ${
+                              className={`py-2 px-1 rounded font-bold cursor-pointer ${
                                 settings.mode === 'list-all'
                                   ? 'bg-indigo-600 text-white'
                                   : 'bg-slate-900 text-slate-400 border border-slate-800'
                               }`}
                             >
                               LIST ALL
+                            </button>
+                            <button
+                              onClick={() =>
+                                setSettings((s) => ({
+                                  ...s,
+                                  mode: 'learn',
+                                  learnClusterCount: s.learnClusterCount || 1,
+                                }))
+                              }
+                              className={`py-2 px-1 rounded font-bold cursor-pointer ${
+                                settings.mode === 'learn'
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'bg-slate-900 text-slate-400 border border-slate-800'
+                              }`}
+                            >
+                              LEARN
                             </button>
                           </div>
                         </div>
@@ -2107,6 +3181,55 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                           </div>
                         )}
                       </div>
+
+                      {/* 2A. Learn Mode Configuration (Settera Flash-Check + Regional Sub-Quiz Partitioning into N Bunches) */}
+                      {settings.mode === 'learn' && (
+                        <div className="bg-slate-950 border border-emerald-500/30 rounded-lg p-3.5 space-y-3">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div>
+                              <div className="text-[11px] text-emerald-300 font-bold">
+                                2. LEARN_MODE_&_REGIONAL_BUNCH_PARTITIONING
+                              </div>
+                              <div className="text-[11px] text-slate-400 mt-0.5">
+                                Click items to flash-reveal their name for 1.8s, or partition the quiz into N contiguous regional bunches (e.g. N=10 for Slovenia) and drill each bunch in Flash, Type, Click, or List mode.
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-4 bg-slate-900 p-3 rounded-lg border border-slate-800">
+                            <div>
+                              <div className="font-bold text-white">
+                                PARTITION INTO N REGIONAL BUNCHES (N = {learnClusterCount})
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                {learnClusterCount === 1
+                                  ? 'Whole quiz together (1 bunch).'
+                                  : `Grouped into ${learnClusterCount} spatially contiguous regional sub-quizzes.`}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="range"
+                                min={1}
+                                max={Math.min(25, Math.max(2, totalCount))}
+                                value={learnClusterCount}
+                                onChange={(e) => {
+                                  const nextN = Number(e.target.value);
+                                  setSettings((s) => ({
+                                    ...s,
+                                    learnClusterCount: nextN,
+                                  }));
+                                  setActiveLearnClusterIdx(null);
+                                }}
+                                className="w-32 accent-emerald-500 cursor-pointer"
+                              />
+                              <span className="w-7 text-right font-bold text-emerald-300">
+                                {learnClusterCount}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {/* 2B. Click Quiz Variants (Standard vs Minefield) */}
                       {!isFlagQuiz && settings.mode === 'click-named' && (
@@ -2215,6 +3338,39 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                                   />
                                 </button>
                               ))}
+                            </div>
+                          )}
+
+                          {/* Mega Quiz Duplicate-Name Disambiguation Sub-Option */}
+                          {isMegaQuiz && (
+                            <div className="pt-2.5 border-t border-slate-800 space-y-2">
+                              <div className="text-[11px] text-sky-300 font-bold">
+                                MEGA_QUIZ_DUPLICATE_NAME_DISAMBIGUATION
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {MEGA_DISAMBIGUATION_MODES_INFO.map((dOpt) => (
+                                  <button
+                                    key={dOpt.id}
+                                    type="button"
+                                    onClick={() =>
+                                      setSettings((s) => ({
+                                        ...s,
+                                        megaDisambiguationMode: dOpt.id,
+                                      }))
+                                    }
+                                    className={`p-2.5 rounded-lg border text-left transition flex flex-col justify-between gap-1 cursor-pointer ${
+                                      activeMegaDisambiguationMode === dOpt.id
+                                        ? 'bg-sky-500/20 border-sky-400 text-white'
+                                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                                    }`}
+                                  >
+                                    <div className="font-bold text-[11px]">{dOpt.label}</div>
+                                    <div className="text-[10px] text-slate-400 leading-tight">
+                                      {dOpt.shortDesc}
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
                             </div>
                           )}
 
@@ -2485,7 +3641,11 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                       REVISION_TRACKED_PRESET:{' '}
                       <strong className="text-slate-200">
                         {isSpecialCitiesQuiz
-                          ? `Top ${trackedPreset.specialCitiesCount || 5} Cities`
+                          ? `Top ${trackedPreset.specialCitiesCount || 5} Cities (${
+                              (trackedPreset.cityPopulationBasis || 'metro') === 'city-proper'
+                                ? 'City Proper'
+                                : 'Metro'
+                            })`
                           : `${trackedPreset.mode} / ${trackedPreset.typingMatchMode} / ${
                               isFlagQuiz
                                 ? trackedPreset.flagDisplayMode || 'standard'
@@ -2516,6 +3676,35 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Expandable Quiz Items List ("Show" button below settings menu) */}
+              {showItemsList && (
+                <div className="bg-slate-950 border border-slate-800 rounded-lg p-3.5 space-y-2.5 text-xs">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="font-bold text-indigo-300">
+                      ALL ITEMS IN QUIZ ({allQuizItemsForDisplay.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowItemsList(false)}
+                      className="text-[11px] text-slate-400 hover:text-white underline cursor-pointer"
+                    >
+                      Hide List
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 max-h-60 overflow-y-auto pr-1">
+                    {allQuizItemsForDisplay.map((itemLabel, idx) => (
+                      <div
+                        key={`${itemLabel}-${idx}`}
+                        className="px-2.5 py-1 rounded bg-slate-900 border border-slate-800/80 text-slate-200 truncate flex items-center gap-1.5"
+                      >
+                        <span className="text-[10px] text-slate-500">{idx + 1}.</span>
+                        <span className="truncate">{itemLabel}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2526,6 +3715,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
             item={currentSpecialCitiesItem}
             countryFeature={currentSpecialCountryFeature}
             topN={settings.specialCitiesCount || 5}
+            cityPopulationBasis={settings.cityPopulationBasis || 'metro'}
             showCapitalStar={settings.showCapitalStar ?? true}
             showRelativePopulation={settings.showRelativePopulation ?? true}
             showAbsolutePopulation={settings.showAbsolutePopulation ?? false}
@@ -2537,7 +3727,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
         {/* 0B. NO-MAP LIST ALL VIEW (Named Order, Alphabetical Slots, or Blind Submit) */}
         {!loading &&
           !isSpecialCitiesQuiz &&
-          settings.mode === 'list-all' &&
+          effectivePlayMode === 'list-all' &&
           activeListAllDisplayStyle === 'no-map-list' && (
             <div className="max-w-5xl mx-auto p-4 sm:p-6">
               {activeListAllOrderMode === 'blind' && !isFinished ? (
@@ -2592,7 +3782,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                             #{idx + 1}
                           </span>
                           <span className="truncate">
-                            {isRevealedSlot ? name : '— — — — —'}
+                            {isRevealedSlot ? formatDisplayItemName(name) : '— — — — —'}
                           </span>
                         </div>
                       );
@@ -2624,7 +3814,9 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                           <span className="text-[10px] text-slate-500 w-6 shrink-0">
                             #{idx + 1}
                           </span>
-                          <span className="truncate">{namedItem || '—'}</span>
+                          <span className="truncate">
+                            {namedItem ? formatDisplayItemName(namedItem) : '—'}
+                          </span>
                         </div>
                       );
                     })}
@@ -2634,13 +3826,13 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
             </div>
           )}
 
-        {/* 1. FLAG QUIZ VIEW (Type or Click) */}
+        {/* 1. FLAG QUIZ VIEW (Type, Click, or Learn) */}
         {isFlagQuiz &&
           !loading &&
           quiz.flagItems &&
-          settings.mode !== 'list-all' && (
+          effectivePlayMode !== 'list-all' && (
             <div className="max-w-5xl mx-auto p-6 flex flex-col items-center justify-center min-h-full">
-              {settings.mode === 'type-highlighted' ? (
+              {effectivePlayMode === 'type-highlighted' ? (
                 currentFlagItem && !isFinished ? (
                   <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-xl p-8 flex flex-col items-center justify-center shadow-2xl gap-3">
                     <FlagVisualRenderer
@@ -2662,13 +3854,16 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                     .filter((item) => regionStatuses[item.name] !== undefined)
                     .map((item) => {
                       const status = regionStatuses[item.name]?.state;
+                      const isFlashed = Boolean(learnFlashReveals[item.name]);
                       return (
                         <button
                           key={item.name}
                           type="button"
                           onClick={() => handleTargetClickSelection(item.name)}
-                          className={`p-2 rounded-lg border flex flex-col items-center justify-between gap-2 transition cursor-pointer ${
-                            status === 'correct'
+                          className={`p-2 rounded-lg border flex flex-col items-center justify-between gap-2 transition cursor-pointer relative ${
+                            isFlashed
+                              ? 'bg-amber-500/25 border-amber-400 ring-2 ring-amber-400/50'
+                              : status === 'correct'
                               ? 'bg-emerald-500/15 border-emerald-500/40 opacity-50'
                               : status === 'missed'
                               ? 'bg-rose-500/15 border-rose-500/40'
@@ -2683,8 +3878,15 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                               loading="lazy"
                             />
                           </div>
-                          {(status === 'correct' || status === 'missed' || isFinished) && (
-                            <div className="text-[10px] truncate w-full text-center font-bold text-slate-300">
+                          {(isFlashed ||
+                            status === 'correct' ||
+                            status === 'missed' ||
+                            isFinished) && (
+                            <div
+                              className={`text-[10px] truncate w-full text-center font-bold ${
+                                isFlashed ? 'text-amber-200 animate-pulse' : 'text-slate-300'
+                              }`}
+                            >
                               {item.name}
                             </div>
                           )}
@@ -2700,7 +3902,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
         {!isFlagQuiz &&
           !isSpecialCitiesQuiz &&
           !loading &&
-          settings.mode === 'type-highlighted' &&
+          effectivePlayMode === 'type-highlighted' &&
           settings.mapDisplayStyle === 'isolated-shape' && (
             <div className="w-full h-full flex items-center justify-center p-6 bg-slate-950">
               <div className="max-w-2xl w-full bg-slate-900 border border-slate-800 rounded-xl p-6 flex flex-col items-center justify-center shadow-2xl relative">
@@ -2732,7 +3934,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
         {!isFlagQuiz &&
           !isSpecialCitiesQuiz &&
           !loading &&
-          settings.mode === 'type-highlighted' &&
+          effectivePlayMode === 'type-highlighted' &&
           settings.mapDisplayStyle === 'unit-vectors' && (
             <div className="w-full h-full flex items-center justify-center p-4 bg-slate-950">
               <div className="max-w-3xl w-full bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center shadow-2xl">
@@ -2800,7 +4002,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                           fontSize={11.5}
                           fontWeight="bold"
                         >
-                          {vec.name}
+                          {formatDisplayItemName(vec.name)}
                         </text>
                       </g>
                     );
@@ -2828,24 +4030,25 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
             className="w-full h-full z-0"
             zoomControl={true}
             attributionControl={false}
-            preferCanvas={false}
+            preferCanvas={isMegaQuiz}
           >
             <MapBoundsController
               geoJsonData={effectiveGeoJsonData}
               cityPoints={quiz.cityItems}
               targetFeature={targetFeature}
               targetLatLng={targetLatLng}
-              autoZoomTarget={autoZoomTarget}
+              autoZoomTarget={effectivePlayMode === 'type-highlighted' && autoZoomTarget}
               fitTrigger={fitTrigger}
+              onZoomChange={setMapZoom}
             />
 
             {/* Background Country/Continent Border for River Quizzes, Centroid-Dot, Single-Outline-In-Country, Minefield Click Mode, and Borderless Reveal List Mode */}
             {(isRiverOrLineQuiz ||
               settings.mapDisplayStyle === 'centroid-dot' ||
               isSingleOutlineInCountry ||
-              (settings.mode === 'click-named' &&
+              (effectivePlayMode === 'click-named' &&
                 settings.mapDisplayStyle === 'minefield-no-outlines') ||
-              (settings.mode === 'list-all' &&
+              (effectivePlayMode === 'list-all' &&
                 activeListAllDisplayStyle === 'map-reveal-borders' &&
                 (settings.listAllShowOuterBorder ?? true))) &&
               (countryOutlineGeoJson || worldCountries) && (
@@ -2862,7 +4065,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                 />
               )}
 
-            {/* Base Water Body Layer */}
+            {/* Base Water Body Layer (Strictly filtered to intersect quiz polygons) */}
             {showHydroOverlay && localWaterLakes && (
               <GeoJSON
                 key={`hydro-lakes-${mapLayerSyncKey}`}
@@ -2885,13 +4088,13 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                 style={(feature) => {
                   if (format === 'map-point') {
                     if (
-                      (settings.mode === 'click-named' &&
+                      (effectivePlayMode === 'click-named' &&
                         settings.mapDisplayStyle === 'minefield-no-outlines') ||
-                      (settings.mode === 'list-all' &&
+                      (effectivePlayMode === 'list-all' &&
                         activeListAllDisplayStyle === 'map-reveal-borders')
                     ) {
                       const showOuter =
-                        settings.mode === 'list-all'
+                        effectivePlayMode === 'list-all'
                           ? (settings.listAllShowOuterBorder ?? true)
                           : true;
                       return {
@@ -2912,21 +4115,48 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                   if (!feature) return {};
                   const regionName = getFeatureName(feature);
                   const status = regionStatuses[regionName]?.state;
+                  const isFlashed = Boolean(learnFlashReveals[regionName]);
                   const isTarget =
                     hasStarted &&
-                    settings.mode === 'type-highlighted' &&
+                    effectivePlayMode === 'type-highlighted' &&
                     !isFinished &&
                     regionName === currentTargetName;
+
+                  // Learn Mode Bunch Highlighting
+                  const inSelectedBunch =
+                    settings.mode === 'learn' &&
+                    activeLearnClusterIdx !== null &&
+                    learnClusters[activeLearnClusterIdx]
+                      ? learnClusters[activeLearnClusterIdx].itemKeys.includes(regionName)
+                      : true;
+
+                  // Mega Quiz Active Region Focus Highlighting
+                  const inActiveMegaSlot =
+                    isMegaQuiz &&
+                    effectivePlayMode === 'list-all' &&
+                    activeMegaDisambiguationMode === 'click-active-region' &&
+                    activeSlotKey
+                      ? megaItemMetaMap[regionName]?.slotKey === activeSlotKey
+                      : false;
+
+                  if (isFlashed) {
+                    return {
+                      fillColor: '#f59e0b',
+                      fillOpacity: 0.85,
+                      color: '#fde68a',
+                      weight: 2.2,
+                    };
+                  }
 
                   // River / LineString / Ribbon Styling
                   if (isRiverOrLineQuiz) {
                     const hidePendingLines =
-                      (settings.mode === 'type-highlighted' &&
+                      (effectivePlayMode === 'type-highlighted' &&
                         (settings.mapDisplayStyle === 'centroid-dot' ||
                           isSingleOutlineInCountry)) ||
-                      (settings.mode === 'click-named' &&
+                      (effectivePlayMode === 'click-named' &&
                         settings.mapDisplayStyle === 'minefield-no-outlines') ||
-                      (settings.mode === 'list-all' &&
+                      (effectivePlayMode === 'list-all' &&
                         activeListAllDisplayStyle === 'map-reveal-borders');
 
                     if (hidePendingLines) {
@@ -2960,9 +4190,9 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                       return {
                         color: '#38bdf8',
                         fillColor: '#38bdf8',
-                        fillOpacity: settings.mode === 'click-named' ? 0.02 : 0,
-                        weight: settings.mode === 'click-named' ? 8 : 0,
-                        opacity: settings.mode === 'click-named' ? 0.02 : 0,
+                        fillOpacity: effectivePlayMode === 'click-named' ? 0.02 : 0,
+                        weight: effectivePlayMode === 'click-named' ? 8 : 0,
+                        opacity: effectivePlayMode === 'click-named' ? 0.02 : 0,
                       };
                     }
 
@@ -3004,7 +4234,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
                   // LIST ALL — Borderless Reveal Map Mode (no internal borders until region is named)
                   if (
-                    settings.mode === 'list-all' &&
+                    effectivePlayMode === 'list-all' &&
                     activeListAllDisplayStyle === 'map-reveal-borders'
                   ) {
                     if (status === 'correct') {
@@ -3036,7 +4266,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
                   // Minefield Click Mode
                   if (
-                    settings.mode === 'click-named' &&
+                    effectivePlayMode === 'click-named' &&
                     settings.mapDisplayStyle === 'minefield-no-outlines'
                   ) {
                     if (status === 'correct') {
@@ -3065,7 +4295,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                   }
 
                   if (
-                    settings.mode === 'type-highlighted' &&
+                    effectivePlayMode === 'type-highlighted' &&
                     settings.mapDisplayStyle === 'centroid-dot'
                   ) {
                     return {
@@ -3122,11 +4352,60 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                     };
                   }
 
+                  // Dim items outside the selected Learn Bunch
+                  if (settings.mode === 'learn' && !inSelectedBunch) {
+                    return {
+                      fillColor: '#0f172a',
+                      fillOpacity: 0.35,
+                      color: '#1e293b',
+                      weight: 0.6,
+                    };
+                  }
+
+                  // Color-code Regional Bunches in Learn Mode when viewing ALL
+                  if (
+                    settings.mode === 'learn' &&
+                    activeLearnClusterIdx === null &&
+                    learnClusters.length > 1
+                  ) {
+                    const bIdx = learnClusters.findIndex((c) =>
+                      c.itemKeys.includes(regionName)
+                    );
+                    const palette = [
+                      '#3b82f6',
+                      '#10b981',
+                      '#f59e0b',
+                      '#ec4899',
+                      '#8b5cf6',
+                      '#06b6d4',
+                      '#84cc16',
+                      '#f97316',
+                      '#6366f1',
+                      '#14b8a6',
+                    ];
+                    const bColor = bIdx >= 0 ? palette[bIdx % palette.length] : '#1e293b';
+                    return {
+                      fillColor: bColor,
+                      fillOpacity: 0.35,
+                      color: '#64748b',
+                      weight: 1,
+                    };
+                  }
+
+                  if (inActiveMegaSlot) {
+                    return {
+                      fillColor: '#312e81',
+                      fillOpacity: 0.72,
+                      color: '#818cf8',
+                      weight: 1.3,
+                    };
+                  }
+
                   return {
                     fillColor: '#1e293b',
                     fillOpacity: 0.65,
                     color: '#475569',
-                    weight: 1,
+                    weight: isMegaQuiz ? 0.6 : 1,
                   };
                 }}
                 onEachFeature={(feature, layer) => {
@@ -3138,10 +4417,10 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                     ((settings.mapDisplayStyle === 'all-outlines' &&
                       !isSingleOutlineInCountry) ||
                       settings.mapDisplayStyle === 'minefield-no-outlines' ||
-                      settings.mode === 'list-all') &&
+                      effectivePlayMode === 'list-all') &&
                     (status === 'correct' || status === 'missed' || isFinished)
                   ) {
-                    layer.bindTooltip(regionName, {
+                    layer.bindTooltip(formatDisplayItemName(regionName), {
                       sticky: true,
                       direction: 'top',
                       className: 'region-tooltip',
@@ -3155,10 +4434,93 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
               />
             )}
 
+            {/* Learn Mode Flash-Check Popups on Map */}
+            {Object.keys(learnFlashReveals).map((flashedName) => {
+              const center = subdivisionCentroids[flashedName];
+              if (!center) return null;
+              return (
+                <CircleMarker
+                  key={`flash-${flashedName}`}
+                  center={center}
+                  radius={6}
+                  pathOptions={{
+                    fillColor: '#f59e0b',
+                    fillOpacity: 1,
+                    color: '#ffffff',
+                    weight: 2,
+                  }}
+                >
+                  <Tooltip permanent direction="top" className="region-tooltip font-bold">
+                    {formatDisplayItemName(flashedName)}
+                  </Tooltip>
+                </CircleMarker>
+              );
+            })}
+
+            {/* Zoom-Adaptive Indicator Dot for Small Current Target in Type Mode */}
+            {format === 'map-polygon' &&
+              hasStarted &&
+              !isFinished &&
+              effectivePlayMode === 'type-highlighted' &&
+              settings.mapDisplayStyle !== 'centroid-dot' &&
+              currentTargetName &&
+              subdivisionCentroids[currentTargetName] &&
+              (featureSpansByName[currentTargetName] || 0.2) *
+                0.711 *
+                Math.pow(2, mapZoom) <
+                28 && (
+                <CircleMarker
+                  key={`small-target-dot-${currentTargetName}`}
+                  center={subdivisionCentroids[currentTargetName]}
+                  radius={7.5}
+                  pathOptions={{
+                    fillColor: '#facc15',
+                    fillOpacity: 0.95,
+                    color: '#ffffff',
+                    weight: 2.5,
+                  }}
+                  interactive={false}
+                />
+              )}
+
+            {/* Zoom-Adaptive Indicator Dots for Surrounded Unnamed Items in Mega Quiz List-All Mode */}
+            {format === 'map-polygon' &&
+              hasStarted &&
+              !isFinished &&
+              isMegaQuiz &&
+              effectivePlayMode === 'list-all' &&
+              Array.from(surroundedUnnamedKeys).map((surroundedKey) => {
+                const center = subdivisionCentroids[surroundedKey];
+                if (!center) return null;
+                const span = featureSpansByName[surroundedKey] || 0.15;
+                // Disappear when zoomed in close enough that the region is large on screen
+                if (span * 0.711 * Math.pow(2, mapZoom) >= 28) return null;
+                return (
+                  <CircleMarker
+                    key={`surrounded-dot-${surroundedKey}`}
+                    center={center}
+                    radius={5.5}
+                    pathOptions={{
+                      fillColor: '#f43f5e',
+                      fillOpacity: 0.92,
+                      color: '#ffe4e6',
+                      weight: 1.8,
+                    }}
+                    eventHandlers={{
+                      click: () => handleTargetClickSelection(surroundedKey),
+                    }}
+                  >
+                    <Tooltip direction="top" className="region-tooltip">
+                      Unnamed item surrounded by named neighbors (zoom in to inspect)
+                    </Tooltip>
+                  </CircleMarker>
+                );
+              })}
+
             {/* Polygon Centroid Dots (Default: All Centroids Visible; Sub-Setting: Single Target Centroid Only) */}
             {format === 'map-polygon' &&
               hasStarted &&
-              settings.mode === 'type-highlighted' &&
+              effectivePlayMode === 'type-highlighted' &&
               settings.mapDisplayStyle === 'centroid-dot' &&
               !isFinished &&
               Object.entries(subdivisionCentroids)
@@ -3194,7 +4556,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                       {!isSingleCentroidOnly &&
                         (status === 'correct' || status === 'missed') && (
                           <Tooltip direction="top" className="region-tooltip">
-                            {name}
+                            {formatDisplayItemName(name)}
                           </Tooltip>
                         )}
                     </CircleMarker>
@@ -3208,9 +4570,10 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                 .filter((city) => regionStatuses[city.name] !== undefined)
                 .map((city) => {
                   const status = regionStatuses[city.name]?.state;
+                  const isFlashed = Boolean(learnFlashReveals[city.name]);
                   const isTarget =
                     hasStarted &&
-                    settings.mode === 'type-highlighted' &&
+                    effectivePlayMode === 'type-highlighted' &&
                     !isFinished &&
                     city.name === currentTargetName;
 
@@ -3222,7 +4585,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                   }
 
                   if (
-                    settings.mode === 'list-all' &&
+                    effectivePlayMode === 'list-all' &&
                     activeListAllDisplayStyle === 'map-reveal-borders' &&
                     status === 'pending' &&
                     !isFinished
@@ -3230,7 +4593,9 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                     return null;
                   }
 
-                  const fillColor = isTarget
+                  const fillColor = isFlashed
+                    ? '#f59e0b'
+                    : isTarget
                     ? '#facc15'
                     : status === 'correct'
                     ? '#10b981'
@@ -3242,12 +4607,12 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                     <CircleMarker
                       key={city.name}
                       center={[city.lat, city.lng]}
-                      radius={isTarget ? 9 : 6.5}
+                      radius={isTarget || isFlashed ? 9 : 6.5}
                       pathOptions={{
                         fillColor,
                         fillOpacity: 0.95,
-                        color: isTarget ? '#ffffff' : '#0f172a',
-                        weight: isTarget ? 2.5 : 1.5,
+                        color: isTarget || isFlashed ? '#ffffff' : '#0f172a',
+                        weight: isTarget || isFlashed ? 2.5 : 1.5,
                       }}
                       eventHandlers={{
                         click: () => handleTargetClickSelection(city.name),
@@ -3271,7 +4636,9 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div>
                   <div className="text-xs text-slate-400">
-                    {isTrackedRun ? 'RUN_COMPLETE [LOGGED]' : 'PRACTICE_COMPLETE [UNTRACKED]'}
+                    {isTrackedRun || isMegaQuiz
+                      ? 'RUN_COMPLETE [LOGGED]'
+                      : 'PRACTICE_COMPLETE [UNTRACKED]'}
                   </div>
                   <h3 className="text-base font-bold text-white">{quiz.title}</h3>
                 </div>
@@ -3309,8 +4676,9 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                 <div className="flex flex-col gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-xs">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-amber-200">
-                      Last miss: <strong>{lastWrongSubmission.targetName}</strong> (typed "
-                      {lastWrongSubmission.typedText}")
+                      Last miss:{' '}
+                      <strong>{formatDisplayItemName(lastWrongSubmission.targetName)}</strong>{' '}
+                      (typed "{lastWrongSubmission.typedText}")
                     </span>
                     <button
                       onClick={handleOverrideTypoAsCorrect}
@@ -3367,7 +4735,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                           key={s.name}
                           className="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 text-xs"
                         >
-                          {s.name}
+                          {formatDisplayItemName(s.name)}
                         </span>
                       ))}
                   </div>
@@ -3385,7 +4753,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                 )}
 
                 <button
-                  onClick={() => startOrRestartQuiz(null)}
+                  onClick={() => startOrRestartQuiz(null, true)}
                   className="flex-1 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer"
                 >
                   REPEAT FULL
@@ -3407,7 +4775,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                       const missedNames = Object.values(regionStatuses)
                         .filter((s) => s.state === 'missed')
                         .map((s) => s.name);
-                      startOrRestartQuiz(missedNames);
+                      startOrRestartQuiz(missedNames, true);
                     }}
                     className="flex-1 py-2 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 text-xs font-semibold transition cursor-pointer"
                   >

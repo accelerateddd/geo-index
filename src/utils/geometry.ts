@@ -478,3 +478,333 @@ export function computeClosestUnitVectors(
   neighbors.sort((a, b) => a.distanceKm - b.distanceKm);
   return neighbors.slice(0, Math.max(1, n));
 }
+
+function geometryToMultiPolygonCoords(
+  geom: GeoJSON.Geometry | null | undefined
+): polygonClipping.MultiPolygon | null {
+  if (!geom) return null;
+  if (geom.type === 'Polygon') {
+    return [geom.coordinates as unknown as polygonClipping.Polygon];
+  }
+  if (geom.type === 'MultiPolygon') {
+    return geom.coordinates as unknown as polygonClipping.MultiPolygon;
+  }
+  return null;
+}
+
+/**
+ * Filters a lake FeatureCollection so only lakes that geometrically penetrate or lie inside
+ * the actual polygons of `territoryCollection` are kept.
+ * Eliminates lakes in neighboring countries (e.g. Lake Balkhash in Kazakhstan on the Russia quiz)
+ * that merely fall inside the outer lat/lon bounding box of a large country.
+ */
+export function filterLakesIntersectingTerritory(
+  allLakes: GeoJSON.FeatureCollection,
+  territoryCollection: GeoJSON.FeatureCollection | null
+): GeoJSON.FeatureCollection | null {
+  if (!territoryCollection || territoryCollection.features.length === 0) return null;
+
+  const overallBBox = computeFeatureCollectionBBox(territoryCollection);
+  const candidateLakes = allLakes.features.filter((lf) =>
+    bboxesIntersect(overallBBox, computeFeaturesBBox([lf]), 0.05)
+  );
+  if (candidateLakes.length === 0) return null;
+
+  const territoryPolys: Array<{ bbox: BBox; mp: polygonClipping.MultiPolygon }> = [];
+  for (const tf of territoryCollection.features) {
+    const mp = geometryToMultiPolygonCoords(tf.geometry);
+    if (!mp) continue;
+    territoryPolys.push({
+      bbox: computeFeaturesBBox([tf]),
+      mp,
+    });
+  }
+
+  if (territoryPolys.length === 0) return null;
+
+  const intersectingLakes = candidateLakes.filter((lf) => {
+    const lakeMp = geometryToMultiPolygonCoords(lf.geometry);
+    if (!lakeMp) return false;
+    const lakeBBox = computeFeaturesBBox([lf]);
+
+    for (const tp of territoryPolys) {
+      if (!bboxesIntersect(lakeBBox, tp.bbox, 0.002)) continue;
+      try {
+        const inter = polygonClipping.intersection(lakeMp, tp.mp);
+        if (inter && inter.length > 0) {
+          return true;
+        }
+      } catch {
+        // Fallback if degenerate ring: keep if bbox deeply overlaps
+        return true;
+      }
+    }
+    return false;
+  });
+
+  if (intersectingLakes.length === 0) return null;
+  return {
+    type: 'FeatureCollection',
+    features: intersectingLakes,
+  };
+}
+
+export interface RegionalCluster {
+  clusterIndex: number;
+  label: string;
+  itemKeys: string[];
+  center: [number, number];
+}
+
+/**
+ * Partitions a quiz's items into N contiguous regional clusters ("bunches") for Learn Mode.
+ * If N matches the number of natural parent regions (e.g., 12 statistical regions of Slovenia),
+ * uses the exact natural regions; otherwise uses deterministic K-Means++ spatial clustering.
+ */
+export function partitionIntoRegionalClusters(
+  itemKeys: string[],
+  centroids: Record<string, [number, number]>,
+  numClusters: number,
+  naturalGroupByItem?: Record<string, string>
+): RegionalCluster[] {
+  const validKeys = itemKeys.filter((k) => centroids[k] !== undefined);
+  const k = Math.max(1, Math.min(numClusters, validKeys.length));
+  if (k <= 1 || validKeys.length === 0) {
+    return [
+      {
+        clusterIndex: 0,
+        label: `ALL ITEMS (${itemKeys.length})`,
+        itemKeys,
+        center: validKeys[0] ? centroids[validKeys[0]] : [0, 0],
+      },
+    ];
+  }
+
+  // Check if natural groupings exist and match k
+  if (naturalGroupByItem) {
+    const groups: Record<string, string[]> = {};
+    for (const key of validKeys) {
+      const g = naturalGroupByItem[key];
+      if (g) {
+        if (!groups[g]) groups[g] = [];
+        groups[g].push(key);
+      }
+    }
+    const groupEntries = Object.entries(groups);
+    if (groupEntries.length === k) {
+      return groupEntries
+        .map(([gName, keys], idx) => {
+          const lat = keys.reduce((s, x) => s + centroids[x][0], 0) / keys.length;
+          const lng = keys.reduce((s, x) => s + centroids[x][1], 0) / keys.length;
+          return {
+            clusterIndex: idx,
+            label: `${gName} (${keys.length})`,
+            itemKeys: keys,
+            center: [lat, lng] as [number, number],
+          };
+        })
+        .sort((a, b) => b.center[0] - a.center[0] || a.center[1] - b.center[1])
+        .map((c, idx) => ({ ...c, clusterIndex: idx }));
+    }
+  }
+
+  // Deterministic K-Means++ on projected [lat, lng * cosLat]
+  const meanLat =
+    validKeys.reduce((s, key) => s + centroids[key][0], 0) / validKeys.length;
+  const cosLat = Math.max(0.2, Math.cos((meanLat * Math.PI) / 180));
+
+  const pts = validKeys.map((key) => ({
+    key,
+    y: centroids[key][0],
+    x: centroids[key][1] * cosLat,
+    rawLat: centroids[key][0],
+    rawLng: centroids[key][1],
+  }));
+
+  // Sort pts deterministically North-West to South-East to seed K-Means++
+  const sortedPts = [...pts].sort((a, b) => b.y - a.y || a.x - b.x);
+  const centers: Array<{ x: number; y: number }> = [
+    { x: sortedPts[0].x, y: sortedPts[0].y },
+  ];
+
+  while (centers.length < k) {
+    let bestPt = sortedPts[0];
+    let maxMinDist = -1;
+    for (const p of sortedPts) {
+      let minDist = Infinity;
+      for (const c of centers) {
+        const d = (p.x - c.x) ** 2 + (p.y - c.y) ** 2;
+        if (d < minDist) minDist = d;
+      }
+      if (minDist > maxMinDist) {
+        maxMinDist = minDist;
+        bestPt = p;
+      }
+    }
+    centers.push({ x: bestPt.x, y: bestPt.y });
+  }
+
+  const assignments = new Array<number>(pts.length).fill(0);
+  for (let iter = 0; iter < 18; iter++) {
+    let changed = false;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      let bestC = 0;
+      let bestD = Infinity;
+      for (let cIdx = 0; cIdx < k; cIdx++) {
+        const d = (p.x - centers[cIdx].x) ** 2 + (p.y - centers[cIdx].y) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          bestC = cIdx;
+        }
+      }
+      if (assignments[i] !== bestC) {
+        assignments[i] = bestC;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+
+    for (let cIdx = 0; cIdx < k; cIdx++) {
+      let sx = 0;
+      let sy = 0;
+      let cnt = 0;
+      for (let i = 0; i < pts.length; i++) {
+        if (assignments[i] === cIdx) {
+          sx += pts[i].x;
+          sy += pts[i].y;
+          cnt++;
+        }
+      }
+      if (cnt > 0) {
+        centers[cIdx] = { x: sx / cnt, y: sy / cnt };
+      }
+    }
+  }
+
+  const buckets: Map<number, string[]> = new Map();
+  for (let i = 0; i < pts.length; i++) {
+    const cIdx = assignments[i];
+    if (!buckets.has(cIdx)) buckets.set(cIdx, []);
+    buckets.get(cIdx)!.push(pts[i].key);
+  }
+
+  const rawClusters: RegionalCluster[] = [];
+  for (const [, keys] of buckets.entries()) {
+    if (keys.length === 0) continue;
+    const lat = keys.reduce((s, x) => s + centroids[x][0], 0) / keys.length;
+    const lng = keys.reduce((s, x) => s + centroids[x][1], 0) / keys.length;
+    rawClusters.push({
+      clusterIndex: 0,
+      label: '',
+      itemKeys: keys,
+      center: [lat, lng],
+    });
+  }
+
+  // Sort spatially North-to-South, West-to-East so Bunch #1..#N follow a logical geographical order
+  rawClusters.sort((a, b) => b.center[0] - a.center[0] || a.center[1] - b.center[1]);
+  return rawClusters.map((c, idx) => ({
+    ...c,
+    clusterIndex: idx,
+    label: `BUNCH #${idx + 1} (${c.itemKeys.length})`,
+  }));
+}
+
+/**
+ * Computes a spatial neighbor adjacency list for each item key so that in 'list-all' mode,
+ * we can detect when all items surrounding an unnamed item have been named.
+ */
+export function computeSpatialNeighborsMap(
+  bboxesByKey: Record<string, BBox>,
+  centroidsByKey: Record<string, [number, number]>
+): Record<string, string[]> {
+  const keys = Object.keys(centroidsByKey);
+  const result: Record<string, string[]> = {};
+  if (keys.length <= 1) {
+    for (const k of keys) result[k] = [];
+    return result;
+  }
+
+  // Bucket by 2-degree spatial grid for fast O(N) neighbor lookup even on 3,500+ Mega Quiz items
+  const cellSize = 2.0;
+  const grid = new Map<string, string[]>();
+
+  for (const k of keys) {
+    const b = bboxesByKey[k];
+    if (!b) continue;
+    const x0 = Math.floor(b.minLon / cellSize);
+    const x1 = Math.floor(b.maxLon / cellSize);
+    const y0 = Math.floor(b.minLat / cellSize);
+    const y1 = Math.floor(b.maxLat / cellSize);
+    for (let x = x0; x <= x1; x++) {
+      for (let y = y0; y <= y1; y++) {
+        const cellKey = `${x}:${y}`;
+        let list = grid.get(cellKey);
+        if (!list) {
+          list = [];
+          grid.set(cellKey, list);
+        }
+        list.push(k);
+      }
+    }
+  }
+
+  for (const k of keys) {
+    const b = bboxesByKey[k];
+    const neighbors = new Set<string>();
+    if (b) {
+      const span = Math.max(0.02, Math.min(0.25, Math.max(b.maxLon - b.minLon, b.maxLat - b.minLat) * 0.18));
+      const x0 = Math.floor((b.minLon - span) / cellSize);
+      const x1 = Math.floor((b.maxLon + span) / cellSize);
+      const y0 = Math.floor((b.minLat - span) / cellSize);
+      const y1 = Math.floor((b.maxLat + span) / cellSize);
+
+      for (let x = x0; x <= x1; x++) {
+        for (let y = y0; y <= y1; y++) {
+          const cellCandidates = grid.get(`${x}:${y}`);
+          if (!cellCandidates) continue;
+          for (const other of cellCandidates) {
+            if (other === k || neighbors.has(other)) continue;
+            const ob = bboxesByKey[other];
+            if (ob && bboxesIntersect(b, ob, span)) {
+              neighbors.add(other);
+            }
+          }
+        }
+      }
+    }
+
+    // If an island or isolated point has fewer than 2 touching bbox neighbors, link its 3 closest centroids
+    if (neighbors.size < 2) {
+      const [lat0, lon0] = centroidsByKey[k];
+      const cosLat = Math.max(0.2, Math.cos((lat0 * Math.PI) / 180));
+      let best1 = { key: '', d: Infinity };
+      let best2 = { key: '', d: Infinity };
+      let best3 = { key: '', d: Infinity };
+
+      for (const other of keys) {
+        if (other === k) continue;
+        const [lat1, lon1] = centroidsByKey[other];
+        const d = ((lon1 - lon0) * cosLat) ** 2 + (lat1 - lat0) ** 2;
+        if (d < best1.d) {
+          best3 = best2;
+          best2 = best1;
+          best1 = { key: other, d };
+        } else if (d < best2.d) {
+          best3 = best2;
+          best2 = { key: other, d };
+        } else if (d < best3.d) {
+          best3 = { key: other, d };
+        }
+      }
+      if (best1.key) neighbors.add(best1.key);
+      if (best2.key) neighbors.add(best2.key);
+      if (best3.key) neighbors.add(best3.key);
+    }
+
+    result[k] = Array.from(neighbors);
+  }
+
+  return result;
+}

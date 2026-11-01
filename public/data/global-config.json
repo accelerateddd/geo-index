@@ -1,0 +1,14 @@
+{
+  "verifiedQuizIds": [
+    "aus-adm1",
+    "aus-state-flags",
+    "usa-adm1",
+    "svn-adm2-names",
+    "svn-adm1-regions"
+  ],
+  "megaQuizDefaultOverrides": {
+    "mega-world-subdivisions": {},
+    "mega-usa-counties": {},
+    "mega-sydney-suburbs": {}
+  }
+}

@@ -1,15 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { MapContainer, GeoJSON, CircleMarker, Tooltip, useMapEvents } from 'react-leaflet';
-import { MinusCircle, Play, PlusCircle, X } from 'lucide-react';
+import { CheckCircle2, MinusCircle, Play, PlusCircle, ShieldAlert, X } from 'lucide-react';
 import type { QuizAttempt, QuizConfig } from '../types/quiz';
 import { computeQuizStats } from '../utils/revisionAlgorithm';
 import { computeFeaturesBBox } from '../utils/geometry';
 import { getCountryFlagIconByName, getQuizFlagIconUrl } from '../utils/flagIcons';
+import { resolveAssetUrl } from '../utils/assetUrl';
 
 interface IndexMapViewProps {
   quizzes: QuizConfig[];
   attempts: QuizAttempt[];
   enrolledIds: string[];
+  verifiedIds: string[];
+  isOwnerMode: boolean;
+  onToggleVerified: (quizId: string) => void;
   onStartQuiz: (quiz: QuizConfig) => void;
   onToggleEnroll: (quizId: string) => void;
 }
@@ -44,6 +48,9 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
   quizzes,
   attempts,
   enrolledIds,
+  verifiedIds,
+  isOwnerMode,
+  onToggleVerified,
   onStartQuiz,
   onToggleEnroll,
 }) => {
@@ -55,7 +62,7 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
 
   useEffect(() => {
     if (!cachedCountries) {
-      fetch('/data/world-countries.geojson')
+      fetch(resolveAssetUrl('/data/world-countries.geojson'))
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
           if (d) {
@@ -102,7 +109,8 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
     return String(p.ADM0_A3 || p.ISO_A3 || p.NAME || '');
   }
 
-  // Compute small-country dot markers so microstates/islands are easy to click when zoomed out
+  // Compute small-country dot markers so microstates/islands are easy to click when zoomed out,
+  // and disappear automatically as soon as the country polygon reaches ~22px on screen.
   const smallCountryDots = useMemo(() => {
     if (!worldGeoJson) return [];
     const dots: Array<{
@@ -130,7 +138,6 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
           ? p.LABEL_X
           : (bbox.minLon + bbox.maxLon) / 2;
 
-      // Countries with small angular span get a clickable dot when zoomed out
       if (span < 4.5) {
         dots.push({
           key: getCountryKey(f),
@@ -241,31 +248,33 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
               }}
             />
 
-            {/* Clickable Dots for Small Countries & Islands when zoomed out */}
-            {zoomLevel <= 5 &&
-              smallCountryDots.map((dot) => {
-                const isSelected = dot.key === selectedCountryKey;
-                return (
-                  <CircleMarker
-                    key={dot.key}
-                    center={[dot.lat, dot.lng]}
-                    radius={isSelected ? 7 : 5}
-                    pathOptions={{
-                      fillColor: isSelected ? '#facc15' : '#818cf8',
-                      fillOpacity: 0.9,
-                      color: '#0f172a',
-                      weight: 1.5,
-                    }}
-                    eventHandlers={{
-                      click: () => setSelectedCountryKey(dot.key),
-                    }}
-                  >
-                    <Tooltip direction="top" className="region-tooltip">
-                      {dot.name} ({dot.quizCount})
-                    </Tooltip>
-                  </CircleMarker>
-                );
-              })}
+            {/* Clickable Dots for Small Countries & Islands: only rendered while country is small on screen (<22px) */}
+            {smallCountryDots.map((dot) => {
+              const approxScreenPx = dot.span * 0.711 * Math.pow(2, zoomLevel);
+              if (approxScreenPx >= 22) return null;
+
+              const isSelected = dot.key === selectedCountryKey;
+              return (
+                <CircleMarker
+                  key={dot.key}
+                  center={[dot.lat, dot.lng]}
+                  radius={isSelected ? 7 : 5}
+                  pathOptions={{
+                    fillColor: isSelected ? '#facc15' : '#818cf8',
+                    fillOpacity: 0.9,
+                    color: '#0f172a',
+                    weight: 1.5,
+                  }}
+                  eventHandlers={{
+                    click: () => setSelectedCountryKey(dot.key),
+                  }}
+                >
+                  <Tooltip direction="top" className="region-tooltip">
+                    {dot.name} ({dot.quizCount})
+                  </Tooltip>
+                </CircleMarker>
+              );
+            })}
           </MapContainer>
         )}
 
@@ -313,13 +322,14 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
             selectedCountryQuizzes.map((quiz) => {
               const stats = computeQuizStats(quiz.id, attempts);
               const isEnrolled = enrolledIds.includes(quiz.id);
+              const isVerified = verifiedIds.includes(quiz.id);
               const flagIconUrl = getQuizFlagIconUrl(quiz);
 
               return (
                 <div key={quiz.id} className="p-3.5 space-y-2 hover:bg-slate-900/60 transition">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <div className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
                         {flagIconUrl && (
                           <img
                             src={flagIconUrl}
@@ -334,6 +344,38 @@ export const IndexMapView: React.FC<IndexMapViewProps> = ({
                         <span className="text-[10px] text-slate-500">
                           [{quiz.totalItems} items]
                         </span>
+                        {isOwnerMode ? (
+                          <button
+                            onClick={() => onToggleVerified(quiz.id)}
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded border text-[10px] font-bold cursor-pointer ${
+                              isVerified
+                                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                                : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                            }`}
+                          >
+                            {isVerified ? (
+                              <>
+                                <CheckCircle2 className="w-2.5 h-2.5" />
+                                VERIFIED DATA
+                              </>
+                            ) : (
+                              <>
+                                <ShieldAlert className="w-2.5 h-2.5" />
+                                UNVERIFIED [CLICK TO VERIFY]
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <span
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded border text-[10px] font-semibold ${
+                              isVerified
+                                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                                : 'bg-slate-900 border-slate-800 text-slate-500'
+                            }`}
+                          >
+                            {isVerified ? '✓ VERIFIED DATA' : 'UNVERIFIED DATA'}
+                          </span>
+                        )}
                         {quiz.tags.map((t) => (
                           <span
                             key={t}
