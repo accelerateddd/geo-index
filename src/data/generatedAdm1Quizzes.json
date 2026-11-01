@@ -9646,7 +9646,7 @@
         "Mirna Pec"
       ],
       "Sveti Jurij ob Ščavnici": [
-        "Sveti Jurij"
+        "Sveti Jurij ob Scavnici"
       ],
       "Braslovče": [
         "Braslovce"
@@ -9656,6 +9656,50 @@
       ],
       "Semič": [
         "Semic"
+      ],
+      "Sveti Andraž v Slovenskih goricah": [
+        "Sveti Andraž",
+        "Sveti Andraž v Slov. goricah"
+      ],
+      "Sveta Trojica v Slovenskih goricah": [
+        "Sveta Trojica"
+      ],
+      "Sveti Jurij v Slovenskih goricah": [
+        "Sveti Jurij"
+      ],
+      "Miklavž na Dravskem polju": [
+        "Miklavž"
+      ],
+      "Dobrova-Polhov Gradec": [
+        "Dobrova - Polhov Gradec"
+      ],
+      "Gorenja vas - Poljane": [
+        "Gorenja vas-Poljane"
+      ],
+      "Hoče - Slivnica": [
+        "Hoče-Slivnica"
+      ],
+      "Hrpelje - Kozina": [
+        "Hrpelje-Kozina"
+      ],
+      "Log-Dragomer": [
+        "Log - Dragomer"
+      ],
+      "Miren-Kostanjevica": [
+        "Miren - Kostanjevica"
+      ],
+      "Mokronog-Trebelno": [
+        "Mokronog - Trebelno"
+      ],
+      "Rače - Fram": [
+        "Rače-Fram"
+      ],
+      "Renče - Vogrsko": [
+        "Renče-Vogrsko"
+      ],
+      "Šempeter - Vrtojba": [
+        "Šempeter-Vrtojba",
+        "Šempeter"
       ]
     },
     "defaultCenter": [

@@ -70,9 +70,50 @@ export function bboxesIntersect(a: BBox, b: BBox, marginDeg: number = 1.5): bool
   );
 }
 
+function isPointInRing(lon: number, lat: number, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0];
+    const yi = ring[i][1];
+    const xj = ring[j][0];
+    const yj = ring[j][1];
+    const intersect =
+      yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi + 1e-12) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function isRingStrictlyInsideLake(candRing: number[][], lakeGeom: GeoJSON.Geometry): boolean {
+  if (!candRing || candRing.length < 3) return false;
+  // Check 3 sampled vertices + centroid of candidate ring against lake exterior rings
+  const idxs = [
+    0,
+    Math.floor(candRing.length / 3),
+    Math.floor((candRing.length * 2) / 3),
+  ];
+  const outerRings: number[][][] = [];
+  if (lakeGeom.type === 'Polygon' && lakeGeom.coordinates[0]) {
+    outerRings.push(lakeGeom.coordinates[0]);
+  } else if (lakeGeom.type === 'MultiPolygon') {
+    for (const poly of lakeGeom.coordinates) {
+      if (poly[0]) outerRings.push(poly[0]);
+    }
+  }
+  if (outerRings.length === 0) return false;
+
+  for (const idx of idxs) {
+    const pt = candRing[idx];
+    if (!pt) continue;
+    const insideAny = outerRings.some((extRing) => isPointInRing(pt[0], pt[1], extRing));
+    if (!insideAny) return false;
+  }
+  return true;
+}
+
 /**
- * Punches interior hole rings into lake polygons for any island subdivision rings
- * (such as Likoma Island & Chizumulu Island in Lake Malawi) that lie inside a lake's bounding box,
+ * Punches interior hole rings into lake polygons for any true island subdivision rings
+ * (such as Likoma Island & Chizumulu Island in Lake Malawi) that lie strictly inside a lake polygon,
  * ensuring water bodies never obscure island subdivisions.
  */
 export function punchIslandHolesInLakes(
@@ -116,13 +157,14 @@ export function punchIslandHolesInLakes(
 
     const matchingIslands = candidateIslandRings.filter((cand) => {
       if (cand.area > lakeArea * 0.25) return false;
-      const tol = 0.025;
-      return (
+      const tol = 0.01;
+      const inBBox =
         cand.bbox.minLon >= lakeBBox.minLon - tol &&
         cand.bbox.maxLon <= lakeBBox.maxLon + tol &&
         cand.bbox.minLat >= lakeBBox.minLat - tol &&
-        cand.bbox.maxLat <= lakeBBox.maxLat + tol
-      );
+        cand.bbox.maxLat <= lakeBBox.maxLat + tol;
+      if (!inBBox) return false;
+      return isRingStrictlyInsideLake(cand.ring, geom);
     });
 
     if (matchingIslands.length === 0) return lakeFeature;
@@ -573,7 +615,7 @@ export function partitionIntoRegionalClusters(
     return [
       {
         clusterIndex: 0,
-        label: `ALL ITEMS (${itemKeys.length})`,
+        label: `All Items (${itemKeys.length})`,
         itemKeys,
         center: validKeys[0] ? centroids[validKeys[0]] : [0, 0],
       },
@@ -702,12 +744,12 @@ export function partitionIntoRegionalClusters(
     });
   }
 
-  // Sort spatially North-to-South, West-to-East so Bunch #1..#N follow a logical geographical order
+  // Sort spatially North-to-South, West-to-East so Group 1..N follow a logical geographical order
   rawClusters.sort((a, b) => b.center[0] - a.center[0] || a.center[1] - b.center[1]);
   return rawClusters.map((c, idx) => ({
     ...c,
     clusterIndex: idx,
-    label: `BUNCH #${idx + 1} (${c.itemKeys.length})`,
+    label: `Group ${idx + 1} (${c.itemKeys.length})`,
   }));
 }
 

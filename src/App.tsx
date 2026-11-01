@@ -53,7 +53,7 @@ const PRIMARY_TYPE_TAGS = [
   'country-flags',
   'cities',
   'world-capitals',
-  'RIVERS',
+  'rivers',
   'special',
   'mega-quiz',
 ];
@@ -426,14 +426,14 @@ export function App() {
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {(
                     [
-                      { id: 'all', label: `ALL (${allQuizzes.length})` },
-                      { id: 'subdivisions', label: '1ST-LEVEL DIVISIONS' },
-                      { id: 'niche-subdivisions', label: '2ND / 3RD-LEVEL NICHE' },
-                      { id: 'cities', label: 'CITIES' },
-                      { id: 'flags', label: 'FLAGS' },
-                      { id: 'landscapes', label: 'LANDSCAPES / RIVERS' },
-                      { id: 'special', label: 'SPECIAL' },
-                      { id: 'mega', label: 'MEGA QUIZZES' },
+                      { id: 'all', label: `All (${allQuizzes.length})` },
+                      { id: 'subdivisions', label: '1st-Level Divisions' },
+                      { id: 'niche-subdivisions', label: '2nd & 3rd Level' },
+                      { id: 'cities', label: 'Cities' },
+                      { id: 'flags', label: 'Flags' },
+                      { id: 'landscapes', label: 'Landscapes & Rivers' },
+                      { id: 'special', label: 'Special' },
+                      { id: 'mega', label: 'Mega Quizzes' },
                     ] as const
                   ).map((cat) => (
                     <button
@@ -441,11 +441,7 @@ export function App() {
                       onClick={() => setSelectedCategory(cat.id)}
                       className={`px-2.5 py-1 rounded text-xs font-bold transition cursor-pointer ${
                         selectedCategory === cat.id
-                          ? cat.id === 'mega'
-                            ? 'bg-amber-500 text-slate-950'
-                            : 'bg-indigo-600 text-white'
-                          : cat.id === 'mega'
-                          ? 'bg-amber-500/15 border border-amber-500/40 text-amber-300 hover:bg-amber-500/25'
+                          ? 'bg-indigo-600 text-white'
                           : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200'
                       }`}
                     >
@@ -459,9 +455,9 @@ export function App() {
                   <div className="inline-flex rounded bg-slate-950 p-0.5 border border-slate-800 text-[11px] shrink-0">
                     {(
                       [
-                        { id: 'all', label: 'ALL DATA' },
-                        { id: 'verified', label: 'VERIFIED' },
-                        { id: 'unverified', label: 'UNVERIFIED' },
+                        { id: 'all', label: 'All Data' },
+                        { id: 'verified', label: 'Verified' },
+                        { id: 'unverified', label: 'Unverified' },
                       ] as const
                     ).map((vf) => (
                       <button
@@ -482,7 +478,7 @@ export function App() {
                     ))}
                   </div>
 
-                  {/* LIST vs MAP View Toggle */}
+                  {/* List vs Map View Toggle */}
                   <div className="inline-flex rounded bg-slate-950 p-0.5 border border-slate-800 text-xs shrink-0">
                     <button
                       onClick={() => setIndexViewFormat('list')}
@@ -493,7 +489,7 @@ export function App() {
                       }`}
                     >
                       <List className="w-3.5 h-3.5" />
-                      LIST
+                      List
                     </button>
                     <button
                       onClick={() => setIndexViewFormat('map')}
@@ -504,7 +500,7 @@ export function App() {
                       }`}
                     >
                       <MapIcon className="w-3.5 h-3.5" />
-                      MAP
+                      Map
                     </button>
                   </div>
 
@@ -523,7 +519,7 @@ export function App() {
 
               {/* Structural Tag Pills */}
               <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-slate-800/80">
-                <span className="text-[11px] text-slate-500">TYPE_TAG:</span>
+                <span className="text-[11px] text-slate-500">Tag Filter:</span>
                 <button
                   onClick={() => setSelectedTag(null)}
                   className={`px-2 py-0.5 rounded text-[11px] cursor-pointer ${
@@ -532,7 +528,7 @@ export function App() {
                       : 'bg-slate-950 text-slate-400 border border-slate-800'
                   }`}
                 >
-                  ALL
+                  All
                 </button>
                 {PRIMARY_TYPE_TAGS.map((tag) => (
                   <button
@@ -597,11 +593,6 @@ export function App() {
                             )}
                             <span className="text-sm font-bold text-white">{quiz.title}</span>
                             <span className="text-xs text-slate-400">[{quiz.totalItems}]</span>
-                            {quiz.isMegaQuiz && (
-                              <span className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-[10px] text-amber-300 font-bold">
-                                MEGA QUIZ
-                              </span>
-                            )}
                             <span
                               onClick={
                                 isOwnerMode ? () => handleToggleVerified(quiz.id) : undefined
@@ -624,12 +615,12 @@ export function App() {
                               {isVerified ? (
                                 <>
                                   <ShieldCheck className="w-3 h-3" />
-                                  VERIFIED DATA
+                                  Verified Data
                                 </>
                               ) : (
                                 <>
                                   <ShieldAlert className="w-3 h-3" />
-                                  UNVERIFIED DATA
+                                  Unverified Data
                                 </>
                               )}
                             </span>

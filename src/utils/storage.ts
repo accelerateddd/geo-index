@@ -60,6 +60,7 @@ export const DEFAULT_PLAY_SETTINGS: QuizPlaySettings = {
   cityPopulationBasis: 'metro',
   scaleCitiesByPopulation: true,
   showScaleReference: true,
+  showBroaderRegionBorders: true,
 };
 
 export function normalizePlaySettings(
@@ -532,9 +533,21 @@ export async function deleteCustomQuiz(quizId: string): Promise<QuizConfig[]> {
 
 export function normalizeAnswer(input: string): string {
   return input
+    .toLowerCase()
+    .replace(/đ/g, 'd')
+    .replace(/ð/g, 'd')
+    .replace(/ł/g, 'l')
+    .replace(/ø/g, 'o')
+    .replace(/æ/g, 'ae')
+    .replace(/œ/g, 'oe')
+    .replace(/ß/g, 'ss')
+    .replace(/þ/g, 'th')
+    .replace(/ı/g, 'i')
+    .replace(/ħ/g, 'h')
+    .replace(/ŧ/g, 't')
+    .replace(/ŋ/g, 'ng')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
     .replace(/['’`.-]/g, ' ')
     .replace(/[^a-z0-9\s]/g, '')
     .replace(/\s+/g, ' ')

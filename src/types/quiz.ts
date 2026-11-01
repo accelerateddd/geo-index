@@ -76,6 +76,7 @@ export interface QuizPlaySettings {
   cityPopulationBasis?: CityPopulationBasis; // 'metro' (default) | 'city-proper'
   scaleCitiesByPopulation?: boolean; // Legacy compatibility flag
   showScaleReference?: boolean; // Show corner non-country geographical reference silhouette at matching scale
+  showBroaderRegionBorders?: boolean; // Slightly highlight borders of broader sub-regions (enabled by default)
 }
 
 export type QuizFormat =

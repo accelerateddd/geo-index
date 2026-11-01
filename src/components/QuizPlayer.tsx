@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { MapContainer, GeoJSON, CircleMarker, Tooltip, useMap } from 'react-leaflet';
+import { MapContainer, GeoJSON, CircleMarker, Marker, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import confetti from 'canvas-confetti';
 import {
@@ -108,6 +108,20 @@ interface MegaItemMeta {
 
 let cachedLakes: GeoJSON.FeatureCollection | null = null;
 let cachedWorldCountries: GeoJSON.FeatureCollection | null = null;
+
+const SURROUNDED_MISSING_DOT_ICON = L.divIcon({
+  className: '',
+  html: '<div style="width:12px;height:12px;border-radius:9999px;background:#f43f5e;border:2px solid #ffe4e6;box-shadow:0 0 6px rgba(244,63,94,0.85);"></div>',
+  iconSize: [12, 12],
+  iconAnchor: [6, 6],
+});
+
+const SMALL_TARGET_DOT_ICON = L.divIcon({
+  className: '',
+  html: '<div style="width:15px;height:15px;border-radius:9999px;background:#facc15;border:2.5px solid #ffffff;box-shadow:0 0 8px rgba(250,204,21,0.9);pointer-events:none;"></div>',
+  iconSize: [15, 15],
+  iconAnchor: [7.5, 7.5],
+});
 
 function MapBoundsController({
   geoJsonData,
@@ -817,10 +831,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
         ? geoJsonData
         : countryOutlineGeoJson || geoJsonData;
 
-    const intersectingLakes = filterLakesIntersectingTerritory(waterLakes, territoryPolygonFc);
-    if (!intersectingLakes) return null;
-
-    return punchIslandHolesInLakes(intersectingLakes, geoJsonData);
+    return filterLakesIntersectingTerritory(waterLakes, territoryPolygonFc);
   }, [waterLakes, geoJsonData, countryOutlineGeoJson, format, isRiverOrLineQuiz]);
 
   const effectiveGeoJsonData = useMemo<GeoJSON.FeatureCollection | null>(() => {
@@ -829,7 +840,8 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
       return geoJsonData;
     }
     if (geoJsonData.features.length > 160) return geoJsonData;
-    return clipSubdivisionsAgainstLakes(geoJsonData, localWaterLakes);
+    const lakesWithIslandHoles = punchIslandHolesInLakes(localWaterLakes, geoJsonData);
+    return clipSubdivisionsAgainstLakes(geoJsonData, lakesWithIslandHoles);
   }, [geoJsonData, showHydroOverlay, localWaterLakes, isRiverOrLineQuiz, format]);
 
   const featuresByName = useMemo(() => {
@@ -858,7 +870,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
     return map;
   }, [featuresByName, format, quiz.cityItems]);
 
-  // Regional Bunches for Learn Mode
+  // Regional Groups for Learn Mode
   const learnClusterCount = settings.learnClusterCount || 1;
   const learnClusters = useMemo(() => {
     if (settings.mode !== 'learn' || learnClusterCount <= 1) return [];
@@ -871,7 +883,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
         const slice = quiz.flagItems!.slice(idx * size, (idx + 1) * size);
         return {
           clusterIndex: idx,
-          label: `Bunch ${idx + 1} (${slice.length})`,
+          label: `Group ${idx + 1} (${slice.length})`,
           itemKeys: slice.map((s) => s.name),
           center: [0, 0] as [number, number],
         };
@@ -2008,7 +2020,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
               }`}
             >
               <BarChart3 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">PROGRESS & TIMELAPSE</span>
+              <span className="hidden sm:inline">Progress</span>
             </button>
           )}
 
@@ -2021,11 +2033,31 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
             }`}
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">OPTIONS</span>
+            <span className="hidden sm:inline">Options</span>
           </button>
 
           {showInteractiveMap && (
             <>
+              {(isMegaQuiz || Boolean(backgroundGeoJson)) && !isRiverOrLineQuiz && (
+                <button
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      showBroaderRegionBorders: !(s.showBroaderRegionBorders ?? true),
+                    }))
+                  }
+                  title="Toggle Broader Sub-Region Border Highlighting"
+                  className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs border transition cursor-pointer ${
+                    settings.showBroaderRegionBorders ?? true
+                      ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300'
+                      : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">Sub-Borders</span>
+                </button>
+              )}
+
               {!isRiverOrLineQuiz && (
                 <button
                   onClick={() => setShowHydroOverlay((v) => !v)}
@@ -2037,7 +2069,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                   }`}
                 >
                   <Droplets className="w-3.5 h-3.5" />
-                  <span className="hidden md:inline">HYDRO</span>
+                  <span className="hidden md:inline">Hydro</span>
                 </button>
               )}
 
@@ -2052,7 +2084,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                   }`}
                 >
                   <Focus className="w-3.5 h-3.5" />
-                  <span className="hidden md:inline">AUTO-ZOOM</span>
+                  <span className="hidden md:inline">Auto-Zoom</span>
                 </button>
               )}
 
@@ -2061,7 +2093,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                 className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-slate-800/80 border border-slate-700 text-slate-400 hover:text-slate-200 transition cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">FIT</span>
+                <span className="hidden md:inline">Fit</span>
               </button>
             </>
           )}
@@ -2097,18 +2129,18 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
         </div>
       </div>
 
-      {/* LEARN MODE BUNCH SELECTOR & SUB-PRACTICE BAR */}
+      {/* LEARN MODE GROUP SELECTOR & SUB-PRACTICE BAR */}
       {hasStarted && !isFinished && !loading && settings.mode === 'learn' && (
         <div className="bg-slate-900/95 border-b border-slate-800 px-3 py-1.5 z-10 flex flex-col gap-1.5">
           <div className="max-w-5xl mx-auto w-full flex flex-wrap items-center justify-between gap-2 text-xs">
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold text-[11px]">
                 <BookOpen className="w-3 h-3" />
-                LEARN_MODE
+                Learn Mode
               </span>
               <span className="text-slate-400 hidden sm:inline">
                 {learnSubPracticeMode === 'flash'
-                  ? 'Click any item to flash its name for 1.8s'
+                  ? 'Click any item to reveal its name for 1.8s'
                   : `Practicing ${
                       activeLearnClusterIdx !== null && learnClusters[activeLearnClusterIdx]
                         ? learnClusters[activeLearnClusterIdx].label
@@ -2117,15 +2149,15 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
               </span>
             </div>
 
-            {/* Drill Mode Selector for Current Bunch */}
+            {/* Drill Mode Selector for Current Group */}
             <div className="flex items-center gap-1">
-              <span className="text-[10px] text-slate-500 mr-1">BUNCH DRILL:</span>
+              <span className="text-[10px] text-slate-500 mr-1">Group Mode:</span>
               {(
                 [
-                  { id: 'flash', label: 'FLASH CLICK' },
-                  { id: 'type-highlighted', label: 'TYPE' },
-                  { id: 'click-named', label: 'CLICK' },
-                  { id: 'list-all', label: 'LIST' },
+                  { id: 'flash', label: 'Flash Click' },
+                  { id: 'type-highlighted', label: 'Type' },
+                  { id: 'click-named', label: 'Click' },
+                  { id: 'list-all', label: 'List' },
                 ] as const
               ).map((m) => (
                 <button
@@ -2147,7 +2179,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
           {learnClusters.length > 1 && (
             <div className="max-w-5xl mx-auto w-full flex items-center gap-1.5 overflow-x-auto pb-0.5">
               <span className="text-[10px] text-slate-500 shrink-0">
-                BUNCHES ({learnClusters.length}):
+                Regional Groups ({learnClusters.length}):
               </span>
               <button
                 type="button"
@@ -2158,7 +2190,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                     : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
                 }`}
               >
-                ALL ({Object.keys(subdivisionCentroids).length || totalCount})
+                All ({Object.keys(subdivisionCentroids).length || totalCount})
               </button>
               {learnClusters.map((c, idx) => (
                 <button
@@ -2504,9 +2536,10 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
           </div>
         )}
 
-        {/* MEGA QUIZ EXPANDABLE PROGRESS & TIMELAPSE VIEWER */}
+        {/* MEGA QUIZ FLOATING PROGRESS VIEWER (Overlays map without pushing it down) */}
         {isMegaQuiz && showMegaProgressPanel && geoJsonData && (
           <MegaProgressPanel
+            quizId={quiz.id}
             geoJsonData={geoJsonData}
             getFeatureKey={getFeatureName}
             getFeatureSlot={(f) =>
@@ -2520,6 +2553,8 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
             elapsedSeconds={elapsedSeconds}
             totalCount={totalCount}
             correctCount={correctCount}
+            isSubRegionModeEnabled={activeMegaDisambiguationMode === 'click-active-region'}
+            activeSubRegionStats={activeSlotStats}
             activeRegionSlot={activeSlotKey}
             onSelectRegionSlot={(slot) => setActiveSlotKey(slot)}
             onClose={() => setShowMegaProgressPanel(false)}
@@ -2700,8 +2735,8 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                           : settings.mode === 'list-all'
                           ? 'LIST_ALL_QUIZ'
                           : settings.mode === 'learn'
-                          ? `LEARN_MODE (${learnClusterCount} BUNCH${
-                              learnClusterCount > 1 ? 'ES' : ''
+                          ? `LEARN_MODE (${learnClusterCount} GROUP${
+                              learnClusterCount > 1 ? 'S' : ''
                             })`
                           : 'CLICK_QUIZ'}
                       </strong>
@@ -3182,16 +3217,16 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                         )}
                       </div>
 
-                      {/* 2A. Learn Mode Configuration (Settera Flash-Check + Regional Sub-Quiz Partitioning into N Bunches) */}
+                      {/* 2A. Learn Mode Configuration (Flash-Check + Regional Sub-Quiz Partitioning into N Groups) */}
                       {settings.mode === 'learn' && (
                         <div className="bg-slate-950 border border-emerald-500/30 rounded-lg p-3.5 space-y-3">
                           <div className="flex items-center justify-between flex-wrap gap-2">
                             <div>
                               <div className="text-[11px] text-emerald-300 font-bold">
-                                2. LEARN_MODE_&_REGIONAL_BUNCH_PARTITIONING
+                                2. Learn Mode & Regional Group Partitioning
                               </div>
                               <div className="text-[11px] text-slate-400 mt-0.5">
-                                Click items to flash-reveal their name for 1.8s, or partition the quiz into N contiguous regional bunches (e.g. N=10 for Slovenia) and drill each bunch in Flash, Type, Click, or List mode.
+                                Click items to reveal their name for 1.8s, or partition the quiz into N contiguous regional groups and practice each group in Flash, Type, Click, or List mode.
                               </div>
                             </div>
                           </div>
@@ -3199,12 +3234,12 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                           <div className="flex items-center justify-between gap-4 bg-slate-900 p-3 rounded-lg border border-slate-800">
                             <div>
                               <div className="font-bold text-white">
-                                PARTITION INTO N REGIONAL BUNCHES (N = {learnClusterCount})
+                                Partition into Regional Groups (N = {learnClusterCount})
                               </div>
                               <div className="text-[10px] text-slate-400">
                                 {learnClusterCount === 1
-                                  ? 'Whole quiz together (1 bunch).'
-                                  : `Grouped into ${learnClusterCount} spatially contiguous regional sub-quizzes.`}
+                                  ? 'Full quiz together (1 group).'
+                                  : `Divided into ${learnClusterCount} spatially contiguous regional sub-quizzes.`}
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -3278,31 +3313,59 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                         <div className="bg-slate-950 border border-slate-800 rounded-lg p-3.5 space-y-3">
                           <div className="flex items-center justify-between flex-wrap gap-2">
                             <span className="text-[11px] text-slate-400 font-bold">
-                              3. LIST_ALL_DISPLAY_MODE
+                              3. List All Display Mode
                             </span>
 
-                            {!isFlagQuiz &&
-                              activeListAllDisplayStyle === 'map-reveal-borders' && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setSettings((s) => ({
-                                      ...s,
-                                      listAllShowOuterBorder: !(s.listAllShowOuterBorder ?? true),
-                                    }))
-                                  }
-                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-[11px] font-bold transition cursor-pointer ${
-                                    settings.listAllShowOuterBorder ?? true
-                                      ? 'bg-amber-500/20 border-amber-400 text-amber-300'
-                                      : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
-                                  }`}
-                                >
-                                  <span>
-                                    COUNTRY / CONTINENT OUTER BOUNDARY:{' '}
-                                    {(settings.listAllShowOuterBorder ?? true) ? 'ON' : 'OFF'}
-                                  </span>
-                                </button>
-                              )}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {!isFlagQuiz &&
+                                (isMegaQuiz || Boolean(backgroundGeoJson)) &&
+                                activeListAllDisplayStyle !== 'no-map-list' && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setSettings((s) => ({
+                                        ...s,
+                                        showBroaderRegionBorders: !(
+                                          s.showBroaderRegionBorders ?? true
+                                        ),
+                                      }))
+                                    }
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-[11px] font-bold transition cursor-pointer ${
+                                      settings.showBroaderRegionBorders ?? true
+                                        ? 'bg-indigo-500/20 border-indigo-400 text-indigo-300'
+                                        : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+                                    }`}
+                                  >
+                                    <span>
+                                      Highlight Broader Sub-Region Borders:{' '}
+                                      {(settings.showBroaderRegionBorders ?? true) ? 'On' : 'Off'}
+                                    </span>
+                                  </button>
+                                )}
+
+                              {!isFlagQuiz &&
+                                activeListAllDisplayStyle === 'map-reveal-borders' && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setSettings((s) => ({
+                                        ...s,
+                                        listAllShowOuterBorder: !(s.listAllShowOuterBorder ?? true),
+                                      }))
+                                    }
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-[11px] font-bold transition cursor-pointer ${
+                                      settings.listAllShowOuterBorder ?? true
+                                        ? 'bg-amber-500/20 border-amber-400 text-amber-300'
+                                        : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+                                    }`}
+                                  >
+                                    <span>
+                                      Outer Country / Continent Boundary:{' '}
+                                      {(settings.listAllShowOuterBorder ?? true) ? 'On' : 'Off'}
+                                    </span>
+                                  </button>
+                                )}
+                            </div>
                           </div>
 
                           {!isFlagQuiz && (
@@ -4395,7 +4458,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                   if (inActiveMegaSlot) {
                     return {
                       fillColor: '#312e81',
-                      fillOpacity: 0.72,
+                      fillOpacity: 0.85,
                       color: '#818cf8',
                       weight: 1.3,
                     };
@@ -4403,7 +4466,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
                   return {
                     fillColor: '#1e293b',
-                    fillOpacity: 0.65,
+                    fillOpacity: 0.86,
                     color: '#475569',
                     weight: isMegaQuiz ? 0.6 : 1,
                   };
@@ -4434,6 +4497,29 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
               />
             )}
 
+            {/* Slightly Highlighted Borders for Broader Sub-Regions (Enabled by default) */}
+            {(settings.showBroaderRegionBorders ?? true) &&
+              (isMegaQuiz || Boolean(backgroundGeoJson)) &&
+              !isRiverOrLineQuiz &&
+              countryOutlineGeoJson &&
+              settings.mapDisplayStyle !== 'centroid-dot' &&
+              !isSingleOutlineInCountry && (
+                <GeoJSON
+                  key={`broader-region-borders-${mapLayerSyncKey}-${Boolean(
+                    settings.showBroaderRegionBorders ?? true
+                  )}`}
+                  data={countryOutlineGeoJson}
+                  interactive={false}
+                  style={() => ({
+                    fillColor: 'transparent',
+                    fillOpacity: 0,
+                    color: '#cbd5e1',
+                    weight: 1.75,
+                    opacity: 0.78,
+                  })}
+                />
+              )}
+
             {/* Learn Mode Flash-Check Popups on Map */}
             {Object.keys(learnFlashReveals).map((flashedName) => {
               const center = subdivisionCentroids[flashedName];
@@ -4442,6 +4528,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                 <CircleMarker
                   key={`flash-${flashedName}`}
                   center={center}
+                  pane="markerPane"
                   radius={6}
                   pathOptions={{
                     fillColor: '#f59e0b',
@@ -4457,7 +4544,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
               );
             })}
 
-            {/* Zoom-Adaptive Indicator Dot for Small Current Target in Type Mode */}
+            {/* Zoom-Adaptive Indicator Dot for Small Current Target in Type Mode (Rendered in markerPane above green polygons) */}
             {format === 'map-polygon' &&
               hasStarted &&
               !isFinished &&
@@ -4469,21 +4556,15 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                 0.711 *
                 Math.pow(2, mapZoom) <
                 28 && (
-                <CircleMarker
+                <Marker
                   key={`small-target-dot-${currentTargetName}`}
-                  center={subdivisionCentroids[currentTargetName]}
-                  radius={7.5}
-                  pathOptions={{
-                    fillColor: '#facc15',
-                    fillOpacity: 0.95,
-                    color: '#ffffff',
-                    weight: 2.5,
-                  }}
+                  position={subdivisionCentroids[currentTargetName]}
+                  icon={SMALL_TARGET_DOT_ICON}
                   interactive={false}
                 />
               )}
 
-            {/* Zoom-Adaptive Indicator Dots for Surrounded Unnamed Items in Mega Quiz List-All Mode */}
+            {/* Zoom-Adaptive Indicator Dots for Surrounded Unnamed Items in Mega Quiz List-All Mode (Rendered in markerPane strictly in front of green polygons) */}
             {format === 'map-polygon' &&
               hasStarted &&
               !isFinished &&
@@ -4496,24 +4577,18 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
                 // Disappear when zoomed in close enough that the region is large on screen
                 if (span * 0.711 * Math.pow(2, mapZoom) >= 28) return null;
                 return (
-                  <CircleMarker
+                  <Marker
                     key={`surrounded-dot-${surroundedKey}`}
-                    center={center}
-                    radius={5.5}
-                    pathOptions={{
-                      fillColor: '#f43f5e',
-                      fillOpacity: 0.92,
-                      color: '#ffe4e6',
-                      weight: 1.8,
-                    }}
+                    position={center}
+                    icon={SURROUNDED_MISSING_DOT_ICON}
                     eventHandlers={{
                       click: () => handleTargetClickSelection(surroundedKey),
                     }}
                   >
                     <Tooltip direction="top" className="region-tooltip">
-                      Unnamed item surrounded by named neighbors (zoom in to inspect)
+                      Unnamed region surrounded by completed neighbors (zoom in to inspect)
                     </Tooltip>
-                  </CircleMarker>
+                  </Marker>
                 );
               })}
 
