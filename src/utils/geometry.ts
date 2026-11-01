@@ -850,3 +850,92 @@ export function computeSpatialNeighborsMap(
 
   return result;
 }
+
+/**
+ * Computes exact exterior sub-quiz outlines (e.g. State outlines in US Counties,
+ * Country outlines in World Subdivisions, LGA outlines in Sydney Suburbs, or Region outlines)
+ * directly from the quiz's own polygon vertices by cancelling interior edges shared within
+ * the same sub-quiz group. Avoids superimposing a mismatched external dataset.
+ */
+export function computeBroaderRegionBordersGeoJson(
+  fc: GeoJSON.FeatureCollection | null
+): GeoJSON.FeatureCollection | null {
+  if (!fc || fc.features.length === 0) return null;
+
+  const byGroup = new Map<string, GeoJSON.Feature[]>();
+  for (const f of fc.features) {
+    const p = f.properties || {};
+    const group = String(p.slotKey || p.widerRegion || p.region || '').trim();
+    if (!group) continue;
+    let list = byGroup.get(group);
+    if (!list) {
+      list = [];
+      byGroup.set(group, list);
+    }
+    list.push(f);
+  }
+
+  if (byGroup.size < 2) return null;
+
+  const fmtPt = (pt: number[]) => `${pt[0].toFixed(4)},${pt[1].toFixed(4)}`;
+  const outlineFeatures: GeoJSON.Feature[] = [];
+
+  for (const [group, feats] of byGroup.entries()) {
+    const edgeCounts = new Map<string, { count: number; seg: [number[], number[]] }>();
+
+    const processRing = (ring: number[][]) => {
+      if (!ring || ring.length < 3) return;
+      for (let i = 0; i < ring.length - 1; i++) {
+        const a = ring[i];
+        const b = ring[i + 1];
+        if (!a || !b) continue;
+        const ka = fmtPt(a);
+        const kb = fmtPt(b);
+        if (ka === kb) continue;
+        const edgeKey = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+        const existing = edgeCounts.get(edgeKey);
+        if (existing) {
+          existing.count++;
+        } else {
+          edgeCounts.set(edgeKey, { count: 1, seg: [a, b] });
+        }
+      }
+    };
+
+    for (const f of feats) {
+      const g = f.geometry;
+      if (!g) continue;
+      if (g.type === 'Polygon') {
+        for (const ring of g.coordinates) processRing(ring);
+      } else if (g.type === 'MultiPolygon') {
+        for (const poly of g.coordinates) {
+          for (const ring of poly) processRing(ring);
+        }
+      }
+    }
+
+    const exteriorSegments: number[][][] = [];
+    for (const { count, seg } of edgeCounts.values()) {
+      if (count === 1) {
+        exteriorSegments.push(seg);
+      }
+    }
+
+    if (exteriorSegments.length > 0) {
+      outlineFeatures.push({
+        type: 'Feature',
+        properties: { name: group },
+        geometry: {
+          type: 'MultiLineString',
+          coordinates: exteriorSegments,
+        },
+      });
+    }
+  }
+
+  if (outlineFeatures.length === 0) return null;
+  return {
+    type: 'FeatureCollection',
+    features: outlineFeatures,
+  };
+}

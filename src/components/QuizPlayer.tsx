@@ -55,6 +55,7 @@ import {
 import {
   bboxesIntersect,
   clipSubdivisionsAgainstLakes,
+  computeBroaderRegionBordersGeoJson,
   computeClosestUnitVectors,
   computeFeatureCollectionBBox,
   computeFeaturesBBox,
@@ -415,7 +416,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
   const [worldCountries, setWorldCountries] = useState<GeoJSON.FeatureCollection | null>(
     cachedWorldCountries
   );
-  const [showHydroOverlay, setShowHydroOverlay] = useState(true);
+  const [showHydroOverlay, setShowHydroOverlay] = useState(false);
   const [mapZoom, setMapZoom] = useState<number>(quiz.defaultZoom || 4);
 
   const [loading, setLoading] = useState(true);
@@ -843,6 +844,13 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
     const lakesWithIslandHoles = punchIslandHolesInLakes(localWaterLakes, geoJsonData);
     return clipSubdivisionsAgainstLakes(geoJsonData, lakesWithIslandHoles);
   }, [geoJsonData, showHydroOverlay, localWaterLakes, isRiverOrLineQuiz, format]);
+
+  // Exact sub-quiz outlines derived directly from the quiz's own polygon edges (e.g. States in US Counties, Countries in World Subdivisions, LGAs in Sydney Suburbs, or parent Regions)
+  const subQuizOutlinesGeoJson = useMemo<GeoJSON.FeatureCollection | null>(() => {
+    const derived = computeBroaderRegionBordersGeoJson(effectiveGeoJsonData);
+    if (derived) return derived;
+    return backgroundGeoJson ? countryOutlineGeoJson : null;
+  }, [effectiveGeoJsonData, backgroundGeoJson, countryOutlineGeoJson]);
 
   const featuresByName = useMemo(() => {
     const map: Record<string, GeoJSON.Feature[]> = {};
@@ -2038,17 +2046,17 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
           {showInteractiveMap && (
             <>
-              {(isMegaQuiz || Boolean(backgroundGeoJson)) && !isRiverOrLineQuiz && (
+              {Boolean(subQuizOutlinesGeoJson) && !isRiverOrLineQuiz && (
                 <button
                   onClick={() =>
                     setSettings((s) => ({
                       ...s,
-                      showBroaderRegionBorders: !(s.showBroaderRegionBorders ?? true),
+                      showBroaderRegionBorders: !Boolean(s.showBroaderRegionBorders),
                     }))
                   }
-                  title="Toggle Broader Sub-Region Border Highlighting"
+                  title="Toggle Sub-Quiz Outlines (States, Countries, LGAs, Regions)"
                   className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs border transition cursor-pointer ${
-                    settings.showBroaderRegionBorders ?? true
+                    Boolean(settings.showBroaderRegionBorders)
                       ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300'
                       : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'
                   }`}
@@ -3318,27 +3326,27 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
                             <div className="flex items-center gap-1.5 flex-wrap">
                               {!isFlagQuiz &&
-                                (isMegaQuiz || Boolean(backgroundGeoJson)) &&
+                                Boolean(subQuizOutlinesGeoJson) &&
                                 activeListAllDisplayStyle !== 'no-map-list' && (
                                   <button
                                     type="button"
                                     onClick={() =>
                                       setSettings((s) => ({
                                         ...s,
-                                        showBroaderRegionBorders: !(
-                                          s.showBroaderRegionBorders ?? true
+                                        showBroaderRegionBorders: !Boolean(
+                                          s.showBroaderRegionBorders
                                         ),
                                       }))
                                     }
                                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-[11px] font-bold transition cursor-pointer ${
-                                      settings.showBroaderRegionBorders ?? true
+                                      Boolean(settings.showBroaderRegionBorders)
                                         ? 'bg-indigo-500/20 border-indigo-400 text-indigo-300'
                                         : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
                                     }`}
                                   >
                                     <span>
-                                      Highlight Broader Sub-Region Borders:{' '}
-                                      {(settings.showBroaderRegionBorders ?? true) ? 'On' : 'Off'}
+                                      Highlight Sub-Quiz Outlines:{' '}
+                                      {Boolean(settings.showBroaderRegionBorders) ? 'On' : 'Off'}
                                     </span>
                                   </button>
                                 )}
@@ -4497,25 +4505,24 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
               />
             )}
 
-            {/* Slightly Highlighted Borders for Broader Sub-Regions (Enabled by default) */}
-            {(settings.showBroaderRegionBorders ?? true) &&
-              (isMegaQuiz || Boolean(backgroundGeoJson)) &&
+            {/* Exact Sub-Quiz Outlines (States in US Counties, Countries in World Subdivisions, LGAs in Sydney Suburbs, Regions — Off by default) */}
+            {Boolean(settings.showBroaderRegionBorders) &&
               !isRiverOrLineQuiz &&
-              countryOutlineGeoJson &&
+              subQuizOutlinesGeoJson &&
               settings.mapDisplayStyle !== 'centroid-dot' &&
               !isSingleOutlineInCountry && (
                 <GeoJSON
                   key={`broader-region-borders-${mapLayerSyncKey}-${Boolean(
-                    settings.showBroaderRegionBorders ?? true
+                    settings.showBroaderRegionBorders
                   )}`}
-                  data={countryOutlineGeoJson}
+                  data={subQuizOutlinesGeoJson}
                   interactive={false}
                   style={() => ({
                     fillColor: 'transparent',
                     fillOpacity: 0,
                     color: '#cbd5e1',
-                    weight: 1.75,
-                    opacity: 0.78,
+                    weight: 1.85,
+                    opacity: 0.85,
                   })}
                 />
               )}

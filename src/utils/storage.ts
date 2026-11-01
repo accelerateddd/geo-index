@@ -10,7 +10,7 @@ const ATTEMPTS_STORAGE_KEY = 'geoquiz_attempts_v1';
 const CUSTOM_QUIZZES_META_KEY = 'geoquiz_custom_quizzes_meta_v1';
 const ENROLLED_REVISION_IDS_KEY = 'geoquiz_enrolled_revision_ids_v1';
 const TRACKED_PRESETS_KEY = 'geoquiz_tracked_presets_v1';
-const GLOBAL_CONFIG_CACHE_KEY = 'geoquiz_global_config_cache_v1';
+const GLOBAL_CONFIG_CACHE_KEY = 'geoquiz_global_config_cache_v2';
 const OWNER_UNLOCKED_KEY = 'geoquiz_owner_unlocked_v1';
 const OWNER_GITHUB_TOKEN_KEY = 'geoquiz_owner_gh_token_v1';
 const USER_MEGA_OVERRIDES_KEY = 'geoquiz_user_mega_overrides_v1';
@@ -25,13 +25,7 @@ export interface GlobalSiteConfig {
 }
 
 const DEFAULT_GLOBAL_CONFIG: GlobalSiteConfig = {
-  verifiedQuizIds: [
-    'aus-adm1',
-    'aus-state-flags',
-    'usa-adm1',
-    'svn-adm2-names',
-    'svn-adm1-regions',
-  ],
+  verifiedQuizIds: [],
   megaQuizDefaultOverrides: {
     'mega-world-subdivisions': {},
     'mega-usa-counties': {},
@@ -60,7 +54,7 @@ export const DEFAULT_PLAY_SETTINGS: QuizPlaySettings = {
   cityPopulationBasis: 'metro',
   scaleCitiesByPopulation: true,
   showScaleReference: true,
-  showBroaderRegionBorders: true,
+  showBroaderRegionBorders: false,
 };
 
 export function normalizePlaySettings(
