@@ -1,101 +1,130 @@
 import type {
   CoverageAnnotation,
   CoverageNotebook,
+  CoverageTagNode,
   OfficialStreetViewMetadata,
+  SideLineTagDefinition,
 } from '../types/coverageNotes';
 
-const NOTEBOOKS_STORAGE_KEY = 'geoquiz_coverage_notebooks_v1';
-const ANNOTATIONS_STORAGE_PREFIX = 'geoquiz_coverage_annotations_v1_';
+const NOTEBOOKS_KEY = 'geo_coverage_notebooks_v2';
+const ANNOTATIONS_PREFIX = 'geo_coverage_annotations_v2_';
+const TAG_TREE_KEY = 'geo_coverage_tag_tree_v1';
+const SIDE_LINE_TAGS_KEY = 'geo_coverage_side_line_tags_v1';
+const SV_STYLE_KEY = 'geo_coverage_sv_style_v1';
 
-export const DEFAULT_NOTEBOOKS: CoverageNotebook[] = [
+const DEFAULT_NOTEBOOKS: CoverageNotebook[] = [
   {
-    id: 'nb-botswana',
-    name: 'Botswana Learning',
-    countryOrRegion: 'Botswana',
-    center: [-22.05, 27.95],
-    zoom: 9,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-  {
-    id: 'nb-mongolia',
-    name: 'Mongolia Coverage',
-    countryOrRegion: 'Mongolia',
-    center: [46.86, 103.85],
-    zoom: 6,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-  {
-    id: 'nb-kyrgyzstan',
-    name: 'Kyrgyzstan Coverage',
-    countryOrRegion: 'Kyrgyzstan',
-    center: [41.2, 74.76],
-    zoom: 7,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-  {
-    id: 'nb-senegal',
-    name: 'Senegal & Ghana',
-    countryOrRegion: 'West Africa',
-    center: [14.5, -14.45],
-    zoom: 7,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-  {
-    id: 'nb-world',
-    name: 'Global Meta Notes',
+    id: 'nb-default',
+    name: 'Main Coverage Notebook',
     countryOrRegion: 'World',
-    center: [15.0, 18.0],
-    zoom: 3,
+    defaultCenter: [-22.15, 28.15],
+    defaultZoom: 9,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   },
 ];
 
-export const QUICK_JUMP_REGIONS: Array<{
-  label: string;
-  center: [number, number];
-  zoom: number;
-}> = [
-  { label: 'Botswana (East / Bobonong)', center: [-22.05, 28.15], zoom: 10 },
-  { label: 'Botswana (Full)', center: [-22.3, 24.6], zoom: 6 },
-  { label: 'Mongolia', center: [46.86, 103.85], zoom: 6 },
-  { label: 'Kyrgyzstan', center: [41.2, 74.76], zoom: 7 },
-  { label: 'Senegal', center: [14.5, -14.45], zoom: 7 },
-  { label: 'Ghana', center: [7.95, -1.02], zoom: 7 },
-  { label: 'Kenya', center: [0.02, 37.9], zoom: 7 },
-  { label: 'Uganda', center: [1.37, 32.29], zoom: 7 },
-  { label: 'Rwanda', center: [-1.94, 29.87], zoom: 9 },
-  { label: 'Iceland', center: [64.96, -19.02], zoom: 6 },
-  { label: 'Bolivia', center: [-16.29, -63.58], zoom: 6 },
-  { label: 'Australia', center: [-25.27, 133.77], zoom: 4 },
-  { label: 'World', center: [20.0, 15.0], zoom: 2 },
-];
+export interface SvCoverageStylePrefs {
+  color: string;
+  opacity: number;
+  visible: boolean;
+}
+
+export function loadSvCoverageStylePrefs(): SvCoverageStylePrefs {
+  try {
+    const raw = localStorage.getItem(SV_STYLE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        color: typeof parsed.color === 'string' ? parsed.color : '#38bdf8',
+        opacity: typeof parsed.opacity === 'number' ? parsed.opacity : 0.3,
+        visible: typeof parsed.visible === 'boolean' ? parsed.visible : true,
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return { color: '#38bdf8', opacity: 0.3, visible: true };
+}
+
+export function saveSvCoverageStylePrefs(prefs: SvCoverageStylePrefs): void {
+  try {
+    localStorage.setItem(SV_STYLE_KEY, JSON.stringify(prefs));
+  } catch {
+    // ignore
+  }
+}
+
+export function loadCoverageTagTree(): CoverageTagNode[] {
+  try {
+    const raw = localStorage.getItem(TAG_TREE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as CoverageTagNode[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCoverageTagTree(nodes: CoverageTagNode[]): void {
+  try {
+    localStorage.setItem(TAG_TREE_KEY, JSON.stringify(nodes));
+  } catch {
+    // ignore
+  }
+}
+
+export function loadSideLineTags(): SideLineTagDefinition[] {
+  try {
+    const raw = localStorage.getItem(SIDE_LINE_TAGS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as SideLineTagDefinition[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveSideLineTags(tags: SideLineTagDefinition[]): void {
+  try {
+    localStorage.setItem(SIDE_LINE_TAGS_KEY, JSON.stringify(tags));
+  } catch {
+    // ignore
+  }
+}
 
 export function loadCoverageNotebooks(): CoverageNotebook[] {
   try {
-    const raw = localStorage.getItem(NOTEBOOKS_STORAGE_KEY);
-    if (!raw) return DEFAULT_NOTEBOOKS;
+    const raw = localStorage.getItem(NOTEBOOKS_KEY);
+    if (!raw) {
+      localStorage.setItem(NOTEBOOKS_KEY, JSON.stringify(DEFAULT_NOTEBOOKS));
+      return DEFAULT_NOTEBOOKS;
+    }
     const parsed = JSON.parse(raw) as CoverageNotebook[];
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_NOTEBOOKS;
+    return parsed.length > 0 ? parsed : DEFAULT_NOTEBOOKS;
   } catch {
     return DEFAULT_NOTEBOOKS;
   }
 }
 
 export function saveCoverageNotebooks(notebooks: CoverageNotebook[]): void {
-  localStorage.setItem(NOTEBOOKS_STORAGE_KEY, JSON.stringify(notebooks));
+  try {
+    localStorage.setItem(NOTEBOOKS_KEY, JSON.stringify(notebooks));
+  } catch (err) {
+    console.error('Failed to save coverage notebooks:', err);
+  }
 }
 
 export function loadNotebookAnnotations(notebookId: string): CoverageAnnotation[] {
   try {
-    const raw = localStorage.getItem(`${ANNOTATIONS_STORAGE_PREFIX}${notebookId}`);
+    const key = `${ANNOTATIONS_PREFIX}${notebookId}`;
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as CoverageAnnotation[];
-    return Array.isArray(parsed) ? parsed : [];
+    // Filter out any legacy demo-* items if present
+    return Array.isArray(parsed)
+      ? parsed.filter((a) => !a.id.startsWith('demo-'))
+      : [];
   } catch {
     return [];
   }
@@ -105,205 +134,274 @@ export function saveNotebookAnnotations(
   notebookId: string,
   annotations: CoverageAnnotation[]
 ): void {
-  localStorage.setItem(
-    `${ANNOTATIONS_STORAGE_PREFIX}${notebookId}`,
-    JSON.stringify(annotations)
-  );
+  try {
+    const key = `${ANNOTATIONS_PREFIX}${notebookId}`;
+    localStorage.setItem(key, JSON.stringify(annotations));
+  } catch (err) {
+    console.error('Failed to save notebook annotations:', err);
+  }
+}
+
+export interface CoverageExportBundle {
+  version: 2;
+  exportedAt: string;
+  notebook: CoverageNotebook;
+  annotations: CoverageAnnotation[];
+  tagTree?: CoverageTagNode[];
+  sideLineTags?: SideLineTagDefinition[];
+}
+
+export function exportNotebookJson(
+  notebook: CoverageNotebook,
+  annotations: CoverageAnnotation[],
+  tagTree: CoverageTagNode[],
+  sideLineTags: SideLineTagDefinition[]
+): string {
+  const bundle: CoverageExportBundle = {
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    notebook,
+    annotations,
+    tagTree,
+    sideLineTags,
+  };
+  return JSON.stringify(bundle, null, 2);
 }
 
 /**
- * Queries Google's keyless MapsJsInternalService/SingleImageSearch RPC endpoint,
- * strictly filtered to Official Google Street View coverage (type 2 = outdoor official SV),
- * snapping to the nearest covered road within `radiusMeters`.
+ * Queries Google's internal Street View SingleImageSearch RPC endpoint
+ * to find the nearest official Google Street View panorama (source filter: official only)
+ * and extracts its panorama ID, coordinates, official Google car driving heading,
+ * capture date, and connected road sequence.
  */
 export async function fetchOfficialStreetViewAtLatLng(
   lat: number,
   lng: number,
-  radiusMeters: number = 1200
+  radiusMeters: number = 250
 ): Promise<OfficialStreetViewMetadata | null> {
-  const endpoint =
+  const url =
     'https://maps.googleapis.com/$rpc/google.internal.maps.mapsjs.v1.MapsJsInternalService/SingleImageSearch';
-
-  // Slot 2: [[null, null, lat, lng], radiusMeters]
-  // Slot 3: [null, ["en", "US"], [[[[2, true, 2]]]]] -> restricts strictly to official Google Street View
-  // Slot 4: [[1, 2, 3, 4, 8, 6]] -> requests location, car heading, capture date, and road neighbor links
-  const payload = [
+  const body = JSON.stringify([
     ['apiv3'],
     [[null, null, lat, lng], radiusMeters],
     [null, ['en', 'US'], [[[[2, true, 2]]]]],
     [[1, 2, 3, 4, 8, 6]],
-  ];
+  ]);
 
   try {
-    const res = await fetch(endpoint, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json+protobuf',
       },
-      body: JSON.stringify(payload),
+      body,
     });
     if (!res.ok) return null;
     const data = await res.json();
-    // Status [0] means OK; [5, "generic", "Search returned no images."] means no official road nearby
-    if (!Array.isArray(data) || !Array.isArray(data[0]) || data[0][0] !== 0) {
+
+    if (!Array.isArray(data) || data[0]?.[0] !== 0 || !data[1]) {
       return null;
     }
 
     const meta = data[1];
-    if (!Array.isArray(meta)) return null;
-
-    const panoEntry = meta[1];
-    const panoId = Array.isArray(panoEntry) ? String(panoEntry[1] || '') : '';
+    const panoId: string | undefined = meta?.[1]?.[1];
     if (!panoId) return null;
 
-    // Description (e.g. "Bobonong, Central District")
-    let description: string | null = null;
-    try {
-      const descArr = meta[3]?.[2]?.[0];
-      if (Array.isArray(descArr) && typeof descArr[0] === 'string') {
-        description = descArr[0];
-      }
-    } catch {
-      // ignore
+    const locationBlock = meta?.[5]?.[0]?.[1];
+    const foundLat: number = locationBlock?.[0]?.[2] ?? lat;
+    const foundLng: number = locationBlock?.[0]?.[3] ?? lng;
+    const elevationMeters: number | undefined = locationBlock?.[1]?.[0];
+    const carHeadingDeg: number = locationBlock?.[2]?.[0] ?? 0;
+    const panoNorthDeg: number = data?.[2]?.[0] ?? carHeadingDeg;
+    const countryCode: string | undefined = locationBlock?.[4];
+
+    const descBlock = meta?.[3]?.[2]?.[0]?.[0];
+    const description: string | undefined =
+      typeof descBlock === 'string' ? descBlock : undefined;
+
+    const dateArr = meta?.[6]?.[7];
+    let captureDate: string | undefined;
+    if (Array.isArray(dateArr) && dateArr.length >= 2) {
+      const y = dateArr[0];
+      const m = String(dateArr[1]).padStart(2, '0');
+      captureDate = `${y}-${m}`;
     }
 
-    // Location, elevation, car heading, country code, and neighbor links in meta[5]
-    let snappedLat = lat;
-    let snappedLng = lng;
-    let elevationMeters: number | null = null;
-    let carHeadingDeg = 0;
-    let pitchDeg = 0;
-    let countryCode: string | null = null;
-    const neighborLinks: OfficialStreetViewMetadata['neighborLinks'] = [];
+    // Extract nearby panoramas along the road
+    const rawTargets = meta?.[5]?.[0]?.[3]?.[0];
+    const roadSequence: Array<{
+      panoId: string;
+      lat: number;
+      lng: number;
+      carHeadingDeg: number;
+    }> = [];
+    const coordByPanoId = new Map<string, { lat: number; lng: number }>();
 
-    try {
-      const poseBlock = meta[5]?.[0]?.[1];
-      if (Array.isArray(poseBlock)) {
-        if (Array.isArray(poseBlock[0])) {
-          if (typeof poseBlock[0][2] === 'number') snappedLat = poseBlock[0][2];
-          if (typeof poseBlock[0][3] === 'number') snappedLng = poseBlock[0][3];
-        }
-        if (Array.isArray(poseBlock[1]) && typeof poseBlock[1][0] === 'number') {
-          elevationMeters = Math.round(poseBlock[1][0]);
-        }
-        if (Array.isArray(poseBlock[2])) {
-          if (typeof poseBlock[2][0] === 'number') {
-            carHeadingDeg = Number(poseBlock[2][0].toFixed(1));
-          }
-          if (typeof poseBlock[2][1] === 'number') {
-            pitchDeg = Number((90 - poseBlock[2][1]).toFixed(1));
-          }
-        }
-        if (typeof poseBlock[4] === 'string') {
-          countryCode = poseBlock[4];
+    if (Array.isArray(rawTargets)) {
+      for (const item of rawTargets) {
+        const pid = item?.[0]?.[1];
+        const pLat = item?.[2]?.[0]?.[2];
+        const pLng = item?.[2]?.[0]?.[3];
+        const pHead = item?.[2]?.[2]?.[0] ?? carHeadingDeg;
+        if (
+          typeof pid === 'string' &&
+          typeof pLat === 'number' &&
+          typeof pLng === 'number'
+        ) {
+          coordByPanoId.set(pid, { lat: pLat, lng: pLng });
+          roadSequence.push({
+            panoId: pid,
+            lat: pLat,
+            lng: pLng,
+            carHeadingDeg: pHead,
+          });
         }
       }
-
-      // Extract connected road panoramas so we can step along the road or compute forward/backward headings
-      const rawNeighbors = meta[5]?.[0]?.[3]?.[0];
-      if (Array.isArray(rawNeighbors)) {
-        for (const item of rawNeighbors) {
-          const nPano = item?.[0]?.[1];
-          const nCoords = item?.[2]?.[0];
-          const nHeading = item?.[2]?.[2]?.[0];
-          if (
-            typeof nPano === 'string' &&
-            nPano !== panoId &&
-            Array.isArray(nCoords) &&
-            typeof nCoords[2] === 'number' &&
-            typeof nCoords[3] === 'number'
-          ) {
-            neighborLinks.push({
-              panoId: nPano,
-              lat: nCoords[2],
-              lng: nCoords[3],
-              headingDeg: typeof nHeading === 'number' ? Number(nHeading.toFixed(1)) : carHeadingDeg,
-            });
-          }
-        }
-      }
-    } catch {
-      // ignore
     }
 
-    // Capture date in meta[6]?.[7] -> [year, month]
-    let captureDate: string | null = null;
-    try {
-      const dateTuple = meta[6]?.[7];
-      if (Array.isArray(dateTuple) && typeof dateTuple[0] === 'number') {
-        const yr = dateTuple[0];
-        const mo = typeof dateTuple[1] === 'number' ? dateTuple[1] : null;
-        captureDate = mo ? `${yr}-${String(mo).padStart(2, '0')}` : `${yr}`;
+    const rawNeighbors = meta?.[5]?.[0]?.[6];
+    const neighborLinks: Array<{
+      panoId: string;
+      headingDeg: number;
+      lat?: number;
+      lng?: number;
+    }> = [];
+
+    if (Array.isArray(rawNeighbors)) {
+      for (const n of rawNeighbors) {
+        const targetIndex = n?.[0];
+        const headingDeg = n?.[1]?.[3];
+        const targetPanoId =
+          typeof targetIndex === 'number'
+            ? rawTargets?.[targetIndex]?.[0]?.[1]
+            : undefined;
+        if (typeof targetPanoId === 'string' && typeof headingDeg === 'number') {
+          const coords = coordByPanoId.get(targetPanoId);
+          neighborLinks.push({
+            panoId: targetPanoId,
+            headingDeg,
+            lat: coords?.lat,
+            lng: coords?.lng,
+          });
+        }
       }
-    } catch {
-      // ignore
     }
 
     return {
       panoId,
-      lat: snappedLat,
-      lng: snappedLng,
-      carHeadingDeg,
-      pitchDeg,
-      elevationMeters,
+      lat: foundLat,
+      lng: foundLng,
+      carHeadingDeg: Math.round(carHeadingDeg * 10) / 10,
+      panoNorthDeg,
+      elevationMeters:
+        typeof elevationMeters === 'number'
+          ? Math.round(elevationMeters)
+          : undefined,
       captureDate,
       description,
       countryCode,
       neighborLinks,
+      roadSequence,
     };
-  } catch {
+  } catch (err) {
+    console.warn('Street View SingleImageSearch failed:', err);
     return null;
   }
 }
 
-export function buildStreetViewEmbedUrl(
-  panoId: string,
-  lat: number,
-  lng: number,
-  headingDeg: number = 0,
-  pitchDeg: number = 0
-): string {
-  const cleanHeading = ((headingDeg % 360) + 360) % 360;
-  return `https://www.google.com/maps/embed?pb=!4v1700000000000!6m8!1m7!1s${encodeURIComponent(
-    panoId
-  )}!2m2!1d${lat}!2d${lng}!3f${cleanHeading.toFixed(1)}!4f${pitchDeg.toFixed(
-    1
-  )}!5f0.7820865974627469`;
+/**
+ * Snaps a sequence of drawn or clicked [lat, lng] points to the exact road geometry
+ * using OSRM's driving route geometry endpoint.
+ */
+export async function snapPathToExactRoadGeometry(
+  rawPoints: Array<[number, number]>
+): Promise<Array<[number, number]>> {
+  if (rawPoints.length < 2) return rawPoints;
+
+  // Sample up to 12 waypoints evenly along the stroke so OSRM follows the exact drawn path
+  const maxWaypoints = 12;
+  const sampled: Array<[number, number]> = [];
+  if (rawPoints.length <= maxWaypoints) {
+    sampled.push(...rawPoints);
+  } else {
+    sampled.push(rawPoints[0]);
+    for (let i = 1; i < maxWaypoints - 1; i++) {
+      const idx = Math.floor((i / (maxWaypoints - 1)) * (rawPoints.length - 1));
+      const pt = rawPoints[idx];
+      const prev = sampled[sampled.length - 1];
+      if (Math.hypot(pt[0] - prev[0], pt[1] - prev[1]) > 0.00015) {
+        sampled.push(pt);
+      }
+    }
+    sampled.push(rawPoints[rawPoints.length - 1]);
+  }
+
+  const coordStr = sampled
+    .map(([lat, lng]) => `${lng.toFixed(6)},${lat.toFixed(6)}`)
+    .join(';');
+
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${coordStr}?overview=full&geometries=geojson`;
+    const res = await fetch(url);
+    if (!res.ok) return rawPoints;
+    const data = await res.json();
+    const coords = data?.routes?.[0]?.geometry?.coordinates;
+    if (Array.isArray(coords) && coords.length >= 2) {
+      return coords.map((c: [number, number]) => [c[1], c[0]] as [number, number]);
+    }
+  } catch (err) {
+    console.warn('OSRM road snap fallback to raw points:', err);
+  }
+
+  return rawPoints;
 }
 
-export function buildGoogleMapsDirectPanoUrl(
+/**
+ * Given a single click on a road, finds the local road section around that click
+ * using official Street View road sequence or OSRM local road segment.
+ */
+export async function fetchSingleClickRoadSection(
   lat: number,
   lng: number,
-  headingDeg: number = 0,
-  panoId?: string
-): string {
-  const cleanHeading = ((headingDeg % 360) + 360) % 360;
-  const base = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(
-    6
-  )},${lng.toFixed(6)}&heading=${cleanHeading.toFixed(1)}`;
-  return panoId ? `${base}&pano=${encodeURIComponent(panoId)}` : base;
-}
+  zoom: number
+): Promise<{
+  points: Array<[number, number]>;
+  carHeadingDeg?: number;
+  captureDate?: string;
+  panoId?: string;
+} | null> {
+  const sv = await fetchOfficialStreetViewAtLatLng(lat, lng, 500);
+  // Span length scales inversely with zoom level so zoomed-out clicks select a longer road section
+  const halfSpanMeters = Math.max(
+    250,
+    Math.min(18000, 400 * Math.pow(1.75, Math.max(0, 14 - zoom)))
+  );
 
-export function formatCompassCardinal(deg: number): string {
-  const dirs = [
-    'N',
-    'NNE',
-    'NE',
-    'ENE',
-    'E',
-    'ESE',
-    'SE',
-    'SSE',
-    'S',
-    'SSW',
-    'SW',
-    'WSW',
-    'W',
-    'WNW',
-    'NW',
-    'NNW',
+  const heading = sv?.carHeadingDeg ?? 90;
+  const rad = (heading * Math.PI) / 180;
+  const dLat = (halfSpanMeters / 111320) * Math.cos(rad);
+  const dLng =
+    (halfSpanMeters / (111320 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)))) *
+    Math.sin(rad);
+
+  const startPt: [number, number] = [
+    (sv?.lat ?? lat) - dLat,
+    (sv?.lng ?? lng) - dLng,
   ];
-  const normalized = ((deg % 360) + 360) % 360;
-  const idx = Math.round(normalized / 22.5) % 16;
-  return `${Math.round(normalized)}° ${dirs[idx]}`;
+  const midPt: [number, number] = [sv?.lat ?? lat, sv?.lng ?? lng];
+  const endPt: [number, number] = [
+    (sv?.lat ?? lat) + dLat,
+    (sv?.lng ?? lng) + dLng,
+  ];
+
+  const snapped = await snapPathToExactRoadGeometry([startPt, midPt, endPt]);
+  if (snapped.length >= 2) {
+    return {
+      points: snapped,
+      carHeadingDeg: sv?.carHeadingDeg,
+      captureDate: sv?.captureDate,
+      panoId: sv?.panoId,
+    };
+  }
+  return null;
 }
