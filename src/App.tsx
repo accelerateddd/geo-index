@@ -8,6 +8,7 @@ import {
   Lock,
   Map as MapIcon,
   MinusCircle,
+  Navigation,
   Play,
   PlusCircle,
   Search,
@@ -39,8 +40,9 @@ import { getQuizFlagIconUrl } from './utils/flagIcons';
 import { QuizPlayer } from './components/QuizPlayer';
 import { RevisionTab } from './components/RevisionTab';
 import { IndexMapView } from './components/IndexMapView';
+import { CoverageNotesTab } from './components/CoverageNotesTab';
 
-type ActiveTab = 'revision' | 'explore';
+type ActiveTab = 'revision' | 'explore' | 'coverage';
 
 const PRIMARY_TYPE_TAGS = [
   '1st-level-divisions',
@@ -274,6 +276,24 @@ export function App() {
           </button>
 
           <button
+            onClick={() => {
+              setActiveQuizSession(null);
+              setActiveTab('coverage');
+            }}
+            className={`inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer shrink-0 ${
+              !activeQuizSession && activeTab === 'coverage'
+                ? 'bg-indigo-600 text-white'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            <Navigation className="w-3.5 h-3.5 shrink-0" />
+            <span>
+              <span className="hidden sm:inline">COVERAGE NOTES</span>
+              <span className="sm:hidden">COVERAGE</span>
+            </span>
+          </button>
+
+          <button
             onClick={() => setShowOwnerModal((v) => !v)}
             title="Owner Data Verification & Global Defaults Control"
             className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-bold border transition cursor-pointer shrink-0 ${
@@ -418,6 +438,8 @@ export function App() {
             onResetQuizStats={handleResetQuizStats}
             nowTimestamp={simulatedNow}
           />
+        ) : activeTab === 'coverage' ? (
+          <CoverageNotesTab />
         ) : (
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 space-y-4">
             {/* Technical Category, LIST/MAP Toggle, Search, Verification Filter & Tag Filter Bar */}
