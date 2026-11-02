@@ -1,6 +1,7 @@
 export type CoverageToolId =
   | 'inspect'
   | 'road-stretch'
+  | 'road-poi'
   | 'side-line'
   | 'freehand'
   | 'text'
@@ -11,15 +12,6 @@ export type CoverageToolId =
 export type DrivingDirectionMode = 'forward' | 'reverse' | 'both' | 'none';
 
 export type RoadSnapSubMode = 'freedraw-snap' | 'point-to-point' | 'single-section';
-
-export type MetaPinCategory =
-  | 'pole'
-  | 'sign'
-  | 'weather'
-  | 'camera'
-  | 'vegetation'
-  | 'junction'
-  | 'general';
 
 export type CardinalDirectionFilter =
   | 'all'
@@ -46,6 +38,17 @@ export interface SideLineTagDefinition {
   parentId?: string | null;
 }
 
+export interface RoadPointOfInterest {
+  id: string;
+  label: string;
+  /** Normalized arc-length position along the parent road stretch [0..1] */
+  frac: number;
+  /** Snapped [lat, lng] coordinate on the parent road stretch */
+  position: [number, number];
+  color: string;
+  notes?: string;
+}
+
 export interface RoadSideLineAttachment {
   id: string;
   sideLineTagId: string;
@@ -55,6 +58,10 @@ export interface RoadSideLineAttachment {
   startFrac: number;
   /** Normalized arc-length end along the road stretch [0..1] */
   endFrac: number;
+  /** Optional ID of a RoadPointOfInterest on this road stretch used as the start boundary */
+  startPoiId?: string;
+  /** Optional ID of a RoadPointOfInterest on this road stretch used as the end boundary */
+  endPoiId?: string;
   notes?: string;
 }
 
@@ -76,13 +83,13 @@ export interface CoverageAnnotation {
   label?: string;
   /** Detailed notes */
   notes?: string;
-  /** Pin category for 'pin' type */
-  pinCategory?: MetaPinCategory;
   /** Assigned tag IDs from the user's Tag Tree */
   tagIds?: string[];
-  /** Attached side lines (poles, fences, roadside features) along segments of this road stretch */
+  /** Points of interest (intersections, landmarks, boundaries) along this road stretch */
+  roadPois?: RoadPointOfInterest[];
+  /** Attached side lines along segments of this road stretch */
   sideLines?: RoadSideLineAttachment[];
-  /** Optional pole/sign mini-sketch data URL (PNG from embedded mini canvas) */
+  /** Optional mini-sketch data URL (PNG from embedded mini canvas) */
   sketchDataUrl?: string;
   /** Official Street View panorama metadata (for marked spheres or linked stretches) */
   panoId?: string;

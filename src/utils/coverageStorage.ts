@@ -121,7 +121,6 @@ export function loadNotebookAnnotations(notebookId: string): CoverageAnnotation[
     const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as CoverageAnnotation[];
-    // Filter out any legacy demo-* items if present
     return Array.isArray(parsed)
       ? parsed.filter((a) => !a.id.startsWith('demo-'))
       : [];
@@ -227,7 +226,6 @@ export async function fetchOfficialStreetViewAtLatLng(
       captureDate = `${y}-${m}`;
     }
 
-    // Extract nearby panoramas along the road
     const rawTargets = meta?.[5]?.[0]?.[3]?.[0];
     const roadSequence: Array<{
       panoId: string;
@@ -309,56 +307,143 @@ export async function fetchOfficialStreetViewAtLatLng(
   }
 }
 
-/**
- * Snaps a sequence of drawn or clicked [lat, lng] points to the exact road geometry
- * using OSRM's driving route geometry endpoint.
- */
-export async function snapPathToExactRoadGeometry(
-  rawPoints: Array<[number, number]>
+async function fetchOsrmGeometryForWaypoints(
+  waypoints: Array<[number, number]>
 ): Promise<Array<[number, number]>> {
-  if (rawPoints.length < 2) return rawPoints;
-
-  // Sample up to 12 waypoints evenly along the stroke so OSRM follows the exact drawn path
-  const maxWaypoints = 12;
-  const sampled: Array<[number, number]> = [];
-  if (rawPoints.length <= maxWaypoints) {
-    sampled.push(...rawPoints);
-  } else {
-    sampled.push(rawPoints[0]);
-    for (let i = 1; i < maxWaypoints - 1; i++) {
-      const idx = Math.floor((i / (maxWaypoints - 1)) * (rawPoints.length - 1));
-      const pt = rawPoints[idx];
-      const prev = sampled[sampled.length - 1];
-      if (Math.hypot(pt[0] - prev[0], pt[1] - prev[1]) > 0.00015) {
-        sampled.push(pt);
-      }
-    }
-    sampled.push(rawPoints[rawPoints.length - 1]);
-  }
-
-  const coordStr = sampled
+  if (waypoints.length < 2) return waypoints;
+  const coordStr = waypoints
     .map(([lat, lng]) => `${lng.toFixed(6)},${lat.toFixed(6)}`)
     .join(';');
-
   try {
     const url = `https://router.project-osrm.org/route/v1/driving/${coordStr}?overview=full&geometries=geojson`;
     const res = await fetch(url);
-    if (!res.ok) return rawPoints;
+    if (!res.ok) return waypoints;
     const data = await res.json();
     const coords = data?.routes?.[0]?.geometry?.coordinates;
     if (Array.isArray(coords) && coords.length >= 2) {
       return coords.map((c: [number, number]) => [c[1], c[0]] as [number, number]);
     }
-  } catch (err) {
-    console.warn('OSRM road snap fallback to raw points:', err);
+  } catch {
+    // fallback to covered waypoints
   }
-
-  return rawPoints;
+  return waypoints;
 }
 
 /**
- * Given a single click on a road, finds the local road section around that click
- * using official Street View road sequence or OSRM local road segment.
+ * Strictly snaps a sequence of drawn or clicked [lat, lng] points ONLY to roads
+ * that have official Google Street View coverage.
+ * Returns null if the drawn path does not lie on official Street View coverage.
+ */
+export async function snapPathToOfficialCoveredRoad(
+  rawPoints: Array<[number, number]>,
+  zoom: number
+): Promise<{
+  points: Array<[number, number]>;
+  carHeadingDeg?: number;
+  captureDate?: string;
+  panoId?: string;
+} | null> {
+  if (rawPoints.length < 2) return null;
+
+  // Snap tolerance scales with zoom level so off-coverage roads cannot be accidentally snapped
+  const snapRadiusMeters = Math.max(
+    90,
+    Math.min(750, Math.round(140 * Math.pow(1.4, Math.max(0, 13 - zoom))))
+  );
+
+  // Sample up to 9 checkpoints along the drawn stroke
+  const maxCheckpoints = 9;
+  const sampled: Array<[number, number]> = [];
+  if (rawPoints.length <= maxCheckpoints) {
+    sampled.push(...rawPoints);
+  } else {
+    sampled.push(rawPoints[0]);
+    for (let i = 1; i < maxCheckpoints - 1; i++) {
+      const idx = Math.floor((i / (maxCheckpoints - 1)) * (rawPoints.length - 1));
+      sampled.push(rawPoints[idx]);
+    }
+    sampled.push(rawPoints[rawPoints.length - 1]);
+  }
+
+  // Query official Google Street View coverage at each checkpoint
+  const svResults = await Promise.all(
+    sampled.map(([lat, lng]) =>
+      fetchOfficialStreetViewAtLatLng(lat, lng, snapRadiusMeters)
+    )
+  );
+
+  // Keep only checkpoints that snapped to official Google Street View coverage
+  const validSvs = svResults.filter(
+    (sv): sv is OfficialStreetViewMetadata => sv !== null
+  );
+
+  if (validSvs.length === 0) {
+    return null;
+  }
+
+  // Build deduplicated official-coverage waypoints
+  const coveredWaypoints: Array<[number, number]> = [];
+  for (const sv of validSvs) {
+    const prev = coveredWaypoints[coveredWaypoints.length - 1];
+    if (
+      !prev ||
+      Math.hypot(sv.lat - prev[0], sv.lng - prev[1]) > 0.00005
+    ) {
+      coveredWaypoints.push([sv.lat, sv.lng]);
+    }
+  }
+
+  // If all checkpoints snapped to a single panorama on a short stroke, use its official roadSequence
+  if (coveredWaypoints.length < 2) {
+    const primary = validSvs[0];
+    if (primary.roadSequence && primary.roadSequence.length >= 2) {
+      return {
+        points: primary.roadSequence.map((p) => [p.lat, p.lng]),
+        carHeadingDeg: primary.carHeadingDeg,
+        captureDate: primary.captureDate,
+        panoId: primary.panoId,
+      };
+    }
+    return null;
+  }
+
+  // Route between the verified official-coverage panorama coordinates
+  const routedPoints = await fetchOsrmGeometryForWaypoints(coveredWaypoints);
+
+  // Verify interior midpoints of the routed geometry to ensure OSRM did not shortcut via an uncovered road
+  if (routedPoints.length >= 4) {
+    const mid1 = routedPoints[Math.floor(routedPoints.length * 0.33)];
+    const mid2 = routedPoints[Math.floor(routedPoints.length * 0.67)];
+    const [check1, check2] = await Promise.all([
+      fetchOfficialStreetViewAtLatLng(mid1[0], mid1[1], Math.max(250, snapRadiusMeters)),
+      fetchOfficialStreetViewAtLatLng(mid2[0], mid2[1], Math.max(250, snapRadiusMeters)),
+    ]);
+
+    // If OSRM detoured onto an uncovered road, fall back to connecting only the verified official SV points
+    if (!check1 || !check2) {
+      if (coveredWaypoints.length >= 2) {
+        return {
+          points: coveredWaypoints,
+          carHeadingDeg: validSvs[0].carHeadingDeg,
+          captureDate: validSvs[0].captureDate,
+          panoId: validSvs[0].panoId,
+        };
+      }
+      return null;
+    }
+  }
+
+  return {
+    points: routedPoints,
+    carHeadingDeg: validSvs[0].carHeadingDeg,
+    captureDate: validSvs[0].captureDate,
+    panoId: validSvs[0].panoId,
+  };
+}
+
+/**
+ * Given a single click on a road, verifies official Street View coverage at the click
+ * and snaps ONLY to the officially covered road section around that point.
  */
 export async function fetchSingleClickRoadSection(
   lat: number,
@@ -370,38 +455,59 @@ export async function fetchSingleClickRoadSection(
   captureDate?: string;
   panoId?: string;
 } | null> {
-  const sv = await fetchOfficialStreetViewAtLatLng(lat, lng, 500);
-  // Span length scales inversely with zoom level so zoomed-out clicks select a longer road section
+  const clickRadiusMeters = Math.max(
+    90,
+    Math.min(600, Math.round(140 * Math.pow(1.4, Math.max(0, 13 - zoom))))
+  );
+  const sv = await fetchOfficialStreetViewAtLatLng(lat, lng, clickRadiusMeters);
+  if (!sv) {
+    return null;
+  }
+
   const halfSpanMeters = Math.max(
     250,
-    Math.min(18000, 400 * Math.pow(1.75, Math.max(0, 14 - zoom)))
+    Math.min(12000, 350 * Math.pow(1.65, Math.max(0, 14 - zoom)))
   );
 
-  const heading = sv?.carHeadingDeg ?? 90;
+  const heading = sv.carHeadingDeg ?? 90;
   const rad = (heading * Math.PI) / 180;
   const dLat = (halfSpanMeters / 111320) * Math.cos(rad);
   const dLng =
     (halfSpanMeters / (111320 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)))) *
     Math.sin(rad);
 
-  const startPt: [number, number] = [
-    (sv?.lat ?? lat) - dLat,
-    (sv?.lng ?? lng) - dLng,
-  ];
-  const midPt: [number, number] = [sv?.lat ?? lat, sv?.lng ?? lng];
-  const endPt: [number, number] = [
-    (sv?.lat ?? lat) + dLat,
-    (sv?.lng ?? lng) + dLng,
-  ];
+  const probeBack: [number, number] = [sv.lat - dLat, sv.lng - dLng];
+  const probeFwd: [number, number] = [sv.lat + dLat, sv.lng + dLng];
 
-  const snapped = await snapPathToExactRoadGeometry([startPt, midPt, endPt]);
-  if (snapped.length >= 2) {
+  // Verify that the backward and forward endpoints also lie on official coverage
+  const [svBack, svFwd] = await Promise.all([
+    fetchOfficialStreetViewAtLatLng(probeBack[0], probeBack[1], halfSpanMeters * 0.6),
+    fetchOfficialStreetViewAtLatLng(probeFwd[0], probeFwd[1], halfSpanMeters * 0.6),
+  ]);
+
+  const verifiedWaypoints: Array<[number, number]> = [];
+  if (svBack) verifiedWaypoints.push([svBack.lat, svBack.lng]);
+  verifiedWaypoints.push([sv.lat, sv.lng]);
+  if (svFwd) verifiedWaypoints.push([svFwd.lat, svFwd.lng]);
+
+  if (verifiedWaypoints.length >= 2) {
+    const snapped = await fetchOsrmGeometryForWaypoints(verifiedWaypoints);
     return {
       points: snapped,
-      carHeadingDeg: sv?.carHeadingDeg,
-      captureDate: sv?.captureDate,
-      panoId: sv?.panoId,
+      carHeadingDeg: sv.carHeadingDeg,
+      captureDate: sv.captureDate,
+      panoId: sv.panoId,
     };
   }
+
+  if (sv.roadSequence && sv.roadSequence.length >= 2) {
+    return {
+      points: sv.roadSequence.map((p) => [p.lat, p.lng]),
+      carHeadingDeg: sv.carHeadingDeg,
+      captureDate: sv.captureDate,
+      panoId: sv.panoId,
+    };
+  }
+
   return null;
 }

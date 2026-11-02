@@ -13,6 +13,7 @@ import {
   ArrowUpRight,
   Bookmark,
   Compass,
+  Crosshair,
   Download,
   Eraser,
   Eye,
@@ -44,8 +45,8 @@ import type {
   CoverageTagNode,
   CoverageToolId,
   DrivingDirectionMode,
-  MetaPinCategory,
   OfficialStreetViewMetadata,
+  RoadPointOfInterest,
   RoadSideLineAttachment,
   RoadSnapSubMode,
   SideLineTagDefinition,
@@ -64,7 +65,7 @@ import {
   saveNotebookAnnotations,
   saveSideLineTags,
   saveSvCoverageStylePrefs,
-  snapPathToExactRoadGeometry,
+  snapPathToOfficialCoveredRoad,
   type CoverageExportBundle,
 } from '../utils/coverageStorage';
 
@@ -89,19 +90,6 @@ const ANNOTATION_COLORS = [
   { id: '#06b6d4', label: 'Cyan' },
   { id: '#1e293b', label: 'Black' },
 ];
-
-const PIN_CATEGORY_INFO: Record<
-  MetaPinCategory,
-  { label: string; short: string; defaultColor: string }
-> = {
-  pole: { label: 'Pole', short: 'P', defaultColor: '#dc2626' },
-  sign: { label: 'Sign / Bollard', short: 'S', defaultColor: '#f97316' },
-  weather: { label: 'Weather / Sky', short: 'W', defaultColor: '#2563eb' },
-  camera: { label: 'Camera / Gen', short: 'C', defaultColor: '#9333ea' },
-  vegetation: { label: 'Hills / Veg', short: 'V', defaultColor: '#16a34a' },
-  junction: { label: 'Junction', short: 'J', defaultColor: '#ec4899' },
-  general: { label: 'Note', short: 'N', defaultColor: '#1e293b' },
-};
 
 const CARDINAL_DIRECTION_TARGET_DEG: Record<
   Exclude<CardinalDirectionFilter, 'all'>,
@@ -137,10 +125,6 @@ function hexToRgbNormalized(hex: string): [number, number, number] {
   ];
 }
 
-/**
- * Computes compass bearing in degrees [0, 360) from [lat1, lng1] to [lat2, lng2]
- * where 0 = North, 90 = East, 180 = South, 270 = West.
- */
 function computeCompassBearing(
   lat1: number,
   lng1: number,
@@ -154,10 +138,6 @@ function computeCompassBearing(
   return ((angleRad * 180) / Math.PI + 360) % 360;
 }
 
-/**
- * Computes the outward normal bearing [0, 360) pointing from the road centerline
- * toward the specified side ('left' or 'right') of a segment running from pt1 to pt2.
- */
 function computeSideOutwardCompassBearing(
   pt1: [number, number],
   pt2: [number, number],
@@ -177,6 +157,71 @@ function isAngleWithinCardinalFilter(
   const spec = CARDINAL_DIRECTION_TARGET_DEG[filter];
   const diff = Math.abs((((bearingDeg - spec.deg) % 360) + 540) % 360 - 180);
   return diff <= spec.tolerance;
+}
+
+/**
+ * Interpolates a single [lat, lng] coordinate at normalized arc-length fraction `frac` [0..1] along `points`.
+ */
+function interpolatePointOnPolylineByFraction(
+  points: Array<[number, number]>,
+  frac: number
+): [number, number] {
+  if (points.length === 0) return [0, 0];
+  if (points.length === 1) return points[0];
+  const clamped = Math.max(0, Math.min(1, frac));
+
+  const segLengths: number[] = [];
+  let totalLen = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const cosLat = Math.cos(
+      ((points[i][0] + points[i + 1][0]) * 0.5 * Math.PI) / 180
+    );
+    const len = Math.hypot(
+      points[i + 1][0] - points[i][0],
+      (points[i + 1][1] - points[i][1]) * cosLat
+    );
+    segLengths.push(len);
+    totalLen += len;
+  }
+  if (totalLen <= 1e-9) return points[0];
+
+  const targetDist = clamped * totalLen;
+  let accum = 0;
+  for (let i = 0; i < segLengths.length; i++) {
+    const segLen = segLengths[i];
+    if (accum + segLen >= targetDist && segLen > 1e-10) {
+      const t = (targetDist - accum) / segLen;
+      return [
+        points[i][0] + (points[i + 1][0] - points[i][0]) * t,
+        points[i][1] + (points[i + 1][1] - points[i][1]) * t,
+      ];
+    }
+    accum += segLen;
+  }
+  return points[points.length - 1];
+}
+
+/**
+ * Resolves the effective [startFrac, endFrac] of a Side Line attachment,
+ * taking into account any linked startPoiId or endPoiId on the parent road stretch.
+ */
+function resolveSideLineFractions(
+  sl: RoadSideLineAttachment,
+  roadPois?: RoadPointOfInterest[]
+): [number, number] {
+  let start = sl.startFrac;
+  let end = sl.endFrac;
+  if (roadPois && roadPois.length > 0) {
+    if (sl.startPoiId) {
+      const p = roadPois.find((poi) => poi.id === sl.startPoiId);
+      if (p) start = p.frac;
+    }
+    if (sl.endPoiId) {
+      const p = roadPois.find((poi) => poi.id === sl.endPoiId);
+      if (p) end = p.frac;
+    }
+  }
+  return [Math.min(start, end), Math.max(start, end)];
 }
 
 /**
@@ -244,7 +289,6 @@ function extractSubPolylineByFraction(
 
 /**
  * Offsets a polyline perpendicular to its path by `offsetPixels` at the given map zoom level.
- * side === 'left' offsets to the left of the forward path; side === 'right' offsets to the right.
  */
 function offsetPolylinePerpendicular(
   points: Array<[number, number]>,
@@ -260,13 +304,11 @@ function offsetPolylinePerpendicular(
     const prev = points[Math.max(0, i - 1)];
     const next = points[Math.min(points.length - 1, i + 1)];
     const cosLat = Math.max(0.15, Math.cos((pt[0] * Math.PI) / 180));
-    const dy = (next[0] - prev[0]) / cosLat; // Northward screen-like delta
-    const dx = next[1] - prev[1]; // Eastward screen-like delta
+    const dy = (next[0] - prev[0]) / cosLat;
+    const dx = next[1] - prev[1];
     const len = Math.hypot(dx, dy);
     if (len < 1e-10) return pt;
 
-    // Forward unit vector in (East, North) is (dx/len, dy/len).
-    // Right-hand perpendicular in (East, North) is (dy/len, -dx/len).
     const nxEast = (dy / len) * sign;
     const nyNorth = (-dx / len) * sign;
 
@@ -277,8 +319,7 @@ function offsetPolylinePerpendicular(
 }
 
 /**
- * Builds geographic chevron polylines (`[leftWing, tip, rightWing]`) along a polyline
- * so React-Leaflet renders them natively inside `<Polyline>` with zero zoom stagger.
+ * Builds geographic chevron polylines (`[leftWing, tip, rightWing]`) along a polyline.
  */
 function buildChevronPolylines(
   points: Array<[number, number]>,
@@ -291,8 +332,6 @@ function buildChevronPolylines(
   const wingLenDeg = degPerPixel * 7.5;
 
   const chevrons: Array<Array<[number, number]>> = [];
-
-  // Accumulate segments and place chevrons evenly
   let distSinceLast = spacingDeg * 0.45;
 
   const addChevronAt = (
@@ -303,14 +342,13 @@ function buildChevronPolylines(
     reverse: boolean
   ) => {
     const cosLat = Math.max(0.15, Math.cos((lat * Math.PI) / 180));
-    const ux = ((reverse ? -dLng : dLng) * cosLat);
+    const ux = (reverse ? -dLng : dLng) * cosLat;
     const uy = reverse ? -dLat : dLat;
     const len = Math.hypot(ux, uy);
     if (len < 1e-10) return;
 
     const fx = ux / len;
     const fy = uy / len;
-    // Perpendicular vector
     const px = -fy;
     const py = fx;
 
@@ -337,15 +375,18 @@ function buildChevronPolylines(
   for (let i = 0; i < points.length - 1; i++) {
     const p1 = points[i];
     const p2 = points[i + 1];
-    const cosLat = Math.max(0.15, Math.cos(((p1[0] + p2[0]) * 0.5 * Math.PI) / 180));
+    const cosLat = Math.max(
+      0.15,
+      Math.cos(((p1[0] + p2[0]) * 0.5 * Math.PI) / 180)
+    );
     const dLat = p2[0] - p1[0];
     const dLng = p2[1] - p1[1];
     const segLen = Math.hypot(dLat / cosLat, dLng);
     if (segLen < 1e-9) continue;
 
-    let Pos = spacingDeg - distSinceLast;
-    while (Pos <= segLen) {
-      const t = Pos / segLen;
+    let pos = spacingDeg - distSinceLast;
+    while (pos <= segLen) {
+      const t = pos / segLen;
       const lat = p1[0] + dLat * t;
       const lng = p1[1] + dLng * t;
 
@@ -355,36 +396,26 @@ function buildChevronPolylines(
       if (direction === 'reverse' || direction === 'both') {
         addChevronAt(lat, lng, dLat / cosLat, dLng, true);
       }
-      Pos += spacingDeg;
+      pos += spacingDeg;
     }
-    distSinceLast = segLen - (Pos - spacingDeg);
+    distSinceLast = segLen - (pos - spacingDeg);
   }
 
-  // Ensure at least one chevron at the midpoint if the road stretch is short
   if (chevrons.length === 0 && points.length >= 2) {
     const midIdx = Math.floor((points.length - 1) / 2);
     const p1 = points[midIdx];
     const p2 = points[midIdx + 1];
-    const cosLat = Math.max(0.15, Math.cos(((p1[0] + p2[0]) * 0.5 * Math.PI) / 180));
+    const cosLat = Math.max(
+      0.15,
+      Math.cos(((p1[0] + p2[0]) * 0.5 * Math.PI) / 180)
+    );
     const midLat = (p1[0] + p2[0]) * 0.5;
     const midLng = (p1[1] + p2[1]) * 0.5;
     if (direction === 'forward' || direction === 'both') {
-      addChevronAt(
-        midLat,
-        midLng,
-        (p2[0] - p1[0]) / cosLat,
-        p2[1] - p1[1],
-        false
-      );
+      addChevronAt(midLat, midLng, (p2[0] - p1[0]) / cosLat, p2[1] - p1[1], false);
     }
     if (direction === 'reverse' || direction === 'both') {
-      addChevronAt(
-        midLat,
-        midLng,
-        (p2[0] - p1[0]) / cosLat,
-        p2[1] - p1[1],
-        true
-      );
+      addChevronAt(midLat, midLng, (p2[0] - p1[0]) / cosLat, p2[1] - p1[1], true);
     }
   }
 
@@ -394,6 +425,7 @@ function buildChevronPolylines(
 /**
  * Projects a clicked point `[lat, lng]` onto a polyline `points`, returning:
  * - `frac`: normalized arc-length [0..1] along the polyline
+ * - `snappedPos`: exact [lat, lng] on the polyline
  * - `side`: 'left' | 'right' relative to the forward polyline tangent
  * - `distanceDeg`: approximate distance in degrees
  */
@@ -401,9 +433,19 @@ function projectPointOntoRoadStretch(
   lat: number,
   lng: number,
   points: Array<[number, number]>
-): { frac: number; side: 'left' | 'right'; distanceDeg: number } {
+): {
+  frac: number;
+  snappedPos: [number, number];
+  side: 'left' | 'right';
+  distanceDeg: number;
+} {
   if (points.length < 2) {
-    return { frac: 0, side: 'left', distanceDeg: Infinity };
+    return {
+      frac: 0,
+      snappedPos: points[0] || [lat, lng],
+      side: 'left',
+      distanceDeg: Infinity,
+    };
   }
 
   const segLengths: number[] = [];
@@ -420,11 +462,17 @@ function projectPointOntoRoadStretch(
     totalLen += len;
   }
   if (totalLen <= 1e-9) {
-    return { frac: 0, side: 'left', distanceDeg: Infinity };
+    return {
+      frac: 0,
+      snappedPos: points[0],
+      side: 'left',
+      distanceDeg: Infinity,
+    };
   }
 
   let bestDist = Infinity;
   let bestFrac = 0;
+  let bestSnapped: [number, number] = points[0];
   let bestSide: 'left' | 'right' = 'left';
   let accum = 0;
 
@@ -450,22 +498,24 @@ function projectPointOntoRoadStretch(
     if (dist < bestDist) {
       bestDist = dist;
       bestFrac = (accum + segLengths[i] * t) / totalLen;
-      // 2D cross product (vx, vy) x (wx - projX, wy - projY):
-      // In (East, North), vx is East, vy is North.
-      // cross = vx * (wy - projY) - vy * (wx - projX).
-      // Positive cross means point is to the LEFT of forward vector (vx, vy).
+      bestSnapped = [
+        A[0] + (B[0] - A[0]) * t,
+        A[1] + (B[1] - A[1]) * t,
+      ];
       const cross = vx * wy - vy * wx;
       bestSide = cross >= 0 ? 'left' : 'right';
     }
     accum += segLengths[i];
   }
 
-  return { frac: bestFrac, side: bestSide, distanceDeg: bestDist };
+  return {
+    frac: bestFrac,
+    snappedPos: bestSnapped,
+    side: bestSide,
+    distanceDeg: bestDist,
+  };
 }
 
-/**
- * Collects all descendant tag IDs (including `rootTagId` itself) in the user's Tag Tree.
- */
 function getTagAndDescendantIds(
   rootTagId: string,
   tree: CoverageTagNode[]
@@ -485,9 +535,9 @@ function getTagAndDescendantIds(
 }
 
 /**
- * Interactive 360° Spherical Panorama Viewer using WebGL + Google's Official Panorama Tiles.
- * Synchronizes `viewHeadingDeg` and `viewPitchDeg` at 60fps so the map's headlight cone
- * always points in the exact direction the user is currently looking.
+ * Interactive 360° Spherical Panorama Viewer using Google's Official Panorama Tiles.
+ * Synchronizes `viewHeadingDeg` and `viewPitchDeg` in real time so the map's headlight cone
+ * points in the exact direction the user is currently looking.
  */
 const StreetViewSphericalViewer: React.FC<{
   panoId: string;
@@ -524,13 +574,11 @@ const StreetViewSphericalViewer: React.FC<{
   }>({ x: 0, y: 0, heading: 0, pitch: 0 });
   const panoCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Stitch the 360° equirectangular panorama from Google's official tile service (zoom=2 -> 4x2 tiles, plus zoom=3 upgrade)
   useEffect(() => {
     let cancelled = false;
     setTilesLoaded(0);
 
     const offscreen = document.createElement('canvas');
-    // At zoom=2, Google Street View panoramas are 1664x832 across 4x2 512x512 tiles
     offscreen.width = 1664;
     offscreen.height = 832;
     const ctx = offscreen.getContext('2d');
@@ -562,7 +610,6 @@ const StreetViewSphericalViewer: React.FC<{
     };
   }, [panoId]);
 
-  // Render spherical projection onto the viewport canvas whenever viewHeadingDeg, viewPitchDeg, fovDeg, or tilesLoaded changes
   useEffect(() => {
     const canvas = canvasRef.current;
     const srcCanvas = panoCanvasRef.current;
@@ -596,7 +643,6 @@ const StreetViewSphericalViewer: React.FC<{
     const fovRad = (fovDeg * Math.PI) / 180;
     const focal = (width * 0.5) / Math.tan(fovRad * 0.5);
 
-    // Yaw relative to the equirectangular center (u = 0.5 corresponds to panoNorthDeg)
     const yawDeg = viewHeadingDeg - panoNorthDeg;
     const yawRad = (yawDeg * Math.PI) / 180;
     const pitchRad = (viewPitchDeg * Math.PI) / 180;
@@ -623,18 +669,16 @@ const StreetViewSphericalViewer: React.FC<{
         const ry = cy * invLen;
         const rz = cz * invLen;
 
-        // Rotate by pitch around X axis
         const y1 = ry * cosPitch + rz * sinPitch;
         const z1 = -ry * sinPitch + rz * cosPitch;
         const x1 = rx;
 
-        // Rotate by yaw around Y axis
         const wx = x1 * cosYaw + z1 * sinYaw;
         const wz = -x1 * sinYaw + z1 * cosYaw;
         const wy = y1;
 
-        const lon = Math.atan2(wx, wz); // [-pi, pi]
-        const lat = Math.asin(Math.max(-1, Math.min(1, wy))); // [-pi/2, pi/2]
+        const lon = Math.atan2(wx, wz);
+        const lat = Math.asin(Math.max(-1, Math.min(1, wy)));
 
         let u = 0.5 + lon * invTwoPi;
         u = u - Math.floor(u);
@@ -680,7 +724,9 @@ const StreetViewSphericalViewer: React.FC<{
 
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     e.preventDefault();
-    setFovDeg((prev) => Math.max(22, Math.min(105, prev + (e.deltaY > 0 ? 7 : -7))));
+    setFovDeg((prev) =>
+      Math.max(22, Math.min(105, prev + (e.deltaY > 0 ? 7 : -7)))
+    );
   };
 
   return (
@@ -694,7 +740,7 @@ const StreetViewSphericalViewer: React.FC<{
         className="w-full h-full cursor-grab active:cursor-grabbing block"
       />
 
-      {/* Live Compass Tape at Top of Panorama */}
+      {/* Live Compass Heading at Top of Panorama */}
       <div className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-slate-950/85 border border-slate-700 text-[11px] font-bold text-amber-300 shadow pointer-events-none flex items-center gap-2">
         <Compass className="w-3.5 h-3.5 text-amber-400" />
         <span>Looking: {formatCompassDirection(viewHeadingDeg)}</span>
@@ -731,9 +777,9 @@ const StreetViewSphericalViewer: React.FC<{
 };
 
 /**
- * Interactive Mini Canvas for Pole / Sign / Bollard Sketches inside a Meta Pin
+ * Interactive Mini Sketch Canvas for Pin Annotations
  */
-const PoleSketchCanvas: React.FC<{
+const PinSketchCanvas: React.FC<{
   value?: string;
   onChange: (dataUrl: string | undefined) => void;
 }> = ({ value, onChange }) => {
@@ -859,7 +905,6 @@ const PoleSketchCanvas: React.FC<{
 
 /**
  * Map interaction & zoom tracker component.
- * Uses native Leaflet events so vector layers never stagger during zooming.
  */
 const MapInteractionController: React.FC<{
   activeTool: CoverageToolId;
@@ -907,7 +952,11 @@ const MapInteractionController: React.FC<{
     click: (e) => {
       const orig = e.originalEvent as MouseEvent;
       if (isDragDrawingMode) return;
-      onMapSingleClick(e.latlng.lat, e.latlng.lng, orig.altKey || orig.button === 2);
+      onMapSingleClick(
+        e.latlng.lat,
+        e.latlng.lng,
+        orig.altKey || orig.button === 2
+      );
     },
     contextmenu: (e) => {
       e.originalEvent.preventDefault();
@@ -930,7 +979,10 @@ const MapInteractionController: React.FC<{
       if (!isDraggingStrokeRef.current) return;
       const nextPt: [number, number] = [e.latlng.lat, e.latlng.lng];
       const prev = strokePtsRef.current[strokePtsRef.current.length - 1];
-      if (!prev || Math.hypot(nextPt[0] - prev[0], nextPt[1] - prev[1]) > 0.00004) {
+      if (
+        !prev ||
+        Math.hypot(nextPt[0] - prev[0], nextPt[1] - prev[1]) > 0.00004
+      ) {
         strokePtsRef.current.push(nextPt);
         onUpdateLiveDrag([...strokePtsRef.current]);
       }
@@ -979,7 +1031,7 @@ export const CoverageNotesTab: React.FC = () => {
   const [undoStack, setUndoStack] = useState<CoverageAnnotation[][]>([]);
   const [redoStack, setRedoStack] = useState<CoverageAnnotation[][]>([]);
 
-  // User-created Tag Tree & Side Line Tags (no pre-populated spam)
+  // User-created Tag Tree & Side Line Tags
   const [tagTree, setTagTree] = useState<CoverageTagNode[]>(() =>
     loadCoverageTagTree()
   );
@@ -997,9 +1049,11 @@ export const CoverageNotesTab: React.FC = () => {
     }
   }, [sideLineTags, activeSideLineTagId]);
 
-  // Customizable Official SV Coverage Style (Color, Opacity, Visibility)
+  // Customizable Official SV Coverage Style
   const initialSvPrefs = useMemo(() => loadSvCoverageStylePrefs(), []);
-  const [baseLayer, setBaseLayer] = useState<'roadmap' | 'hybrid' | 'osm'>('roadmap');
+  const [baseLayer, setBaseLayer] = useState<'roadmap' | 'hybrid' | 'osm'>(
+    'roadmap'
+  );
   const [showOfficialCoverage, setShowOfficialCoverage] = useState<boolean>(
     initialSvPrefs.visible
   );
@@ -1027,31 +1081,34 @@ export const CoverageNotesTab: React.FC = () => {
     useState<DrivingDirectionMode>('forward');
   const [autoDetectCarDir, setAutoDetectCarDir] = useState<boolean>(false);
   const [freehandArrowEnd, setFreehandArrowEnd] = useState<boolean>(false);
-  const [activePinCategory, setActivePinCategory] =
-    useState<MetaPinCategory>('pole');
 
   // Map Zoom & Live Drawing States
   const [mapZoom, setMapZoom] = useState<number>(activeNotebook.defaultZoom);
   const [draftPoints, setDraftPoints] = useState<Array<[number, number]>>([]);
-  const [liveDragPoints, setLiveDragPoints] = useState<Array<[number, number]>>([]);
-  const [isSnappingRoad, setIsSnappingRoad] = useState<boolean>(false);
-  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(
-    null
+  const [liveDragPoints, setLiveDragPoints] = useState<Array<[number, number]>>(
+    []
   );
+  const [snapStatusMsg, setSnapStatusMsg] = useState<string | null>(null);
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<
+    string | null
+  >(null);
 
   // Split-Screen Street View Panorama States
-  // Note: Temporary coverage sphere disappears automatically when Street View is closed or clicked off!
   const [svMeta, setSvMeta] = useState<OfficialStreetViewMetadata | null>(null);
   const [svViewHeading, setSvViewHeading] = useState<number>(0);
   const [svViewPitch, setSvViewPitch] = useState<number>(0);
   const [svLoading, setSvLoading] = useState<boolean>(false);
   const [svStatusMessage, setSvStatusMessage] = useState<string | null>(null);
-  const [showStreetViewPanel, setShowStreetViewPanel] = useState<boolean>(false);
+  const [showStreetViewPanel, setShowStreetViewPanel] =
+    useState<boolean>(false);
   const [useIframeFallback, setUseIframeFallback] = useState<boolean>(false);
 
-  // Tag Tree & Side-Line Cardinal Filter States
-  const [showTagManagerPanel, setShowTagManagerPanel] = useState<boolean>(false);
-  const [selectedFilterTagIds, setSelectedFilterTagIds] = useState<string[]>([]);
+  // Dedicated Right-Sidebar Tags & Filters Panel State
+  const [showTagManagerPanel, setShowTagManagerPanel] =
+    useState<boolean>(false);
+  const [selectedFilterTagIds, setSelectedFilterTagIds] = useState<string[]>(
+    []
+  );
   const [selectedFilterSideLineTagId, setSelectedFilterSideLineTagId] =
     useState<string>('all');
   const [cardinalDirectionFilter, setCardinalDirectionFilter] =
@@ -1064,7 +1121,8 @@ export const CoverageNotesTab: React.FC = () => {
 
   // Side Line Tag Creation Inputs
   const [newSideLineTagName, setNewSideLineTagName] = useState<string>('');
-  const [newSideLineTagColor, setNewSideLineTagColor] = useState<string>('#ef4444');
+  const [newSideLineTagColor, setNewSideLineTagColor] =
+    useState<string>('#ef4444');
 
   // Place Search & Fly Controller
   const [placeQuery, setPlaceQuery] = useState<string>('');
@@ -1140,7 +1198,6 @@ export const CoverageNotesTab: React.FC = () => {
     setSvStatusMessage(null);
   }, []);
 
-  // Check if the currently viewed Street View sphere is already marked/saved in annotations
   const markedSphereForActivePano = useMemo(() => {
     if (!svMeta) return null;
     return (
@@ -1184,7 +1241,7 @@ export const CoverageNotesTab: React.FC = () => {
 
     let found = await fetchOfficialStreetViewAtLatLng(lat, lng, 350);
     if (!found) {
-      found = await fetchOfficialStreetViewAtLatLng(lat, lng, 2200);
+      found = await fetchOfficialStreetViewAtLatLng(lat, lng, 1800);
     }
 
     setSvLoading(false);
@@ -1202,40 +1259,48 @@ export const CoverageNotesTab: React.FC = () => {
     setSvViewPitch(0);
   };
 
-  // Create a Road Stretch snapped to exact road geometry
-  const createSnappedRoadStretch = async (rawPoints: Array<[number, number]>) => {
+  /**
+   * Snaps a Road Stretch strictly to roads with official Google Street View coverage.
+   */
+  const createSnappedRoadStretch = async (
+    rawPoints: Array<[number, number]>
+  ) => {
     if (rawPoints.length < 2) return;
-    setIsSnappingRoad(true);
-    const snappedPoints = await snapPathToExactRoadGeometry(rawPoints);
+    setSnapStatusMsg('Verifying official Street View coverage & snapping road...');
+    const result = await snapPathToOfficialCoveredRoad(rawPoints, mapZoom);
 
-    let directionToUse: DrivingDirectionMode = activeDirection;
-    let carHeadingDeg: number | undefined;
-    let captureDate: string | undefined;
-    let panoId: string | undefined;
-
-    if (autoDetectCarDir && snappedPoints.length >= 2) {
-      const midPt = snappedPoints[Math.floor(snappedPoints.length / 2)];
-      const sv = await fetchOfficialStreetViewAtLatLng(midPt[0], midPt[1], 600);
-      if (sv) {
-        carHeadingDeg = sv.carHeadingDeg;
-        captureDate = sv.captureDate;
-        panoId = sv.panoId;
-        const startPt = snappedPoints[0];
-        const endPt = snappedPoints[snappedPoints.length - 1];
-        const drawnBearing = computeCompassBearing(
-          startPt[0],
-          startPt[1],
-          endPt[0],
-          endPt[1]
-        );
-        const angleDiff = Math.abs(
-          (((sv.carHeadingDeg - drawnBearing) % 360) + 540) % 360 - 180
-        );
-        directionToUse = angleDiff <= 90 ? 'forward' : 'reverse';
-      }
+    if (!result || result.points.length < 2) {
+      setSnapStatusMsg(
+        'Rejected: No official Street View coverage on that road section.'
+      );
+      window.setTimeout(() => setSnapStatusMsg(null), 3200);
+      setDraftPoints([]);
+      return;
     }
 
-    setIsSnappingRoad(false);
+    const snappedPoints = result.points;
+    let directionToUse: DrivingDirectionMode = activeDirection;
+
+    if (
+      autoDetectCarDir &&
+      result.carHeadingDeg !== undefined &&
+      snappedPoints.length >= 2
+    ) {
+      const startPt = snappedPoints[0];
+      const endPt = snappedPoints[snappedPoints.length - 1];
+      const drawnBearing = computeCompassBearing(
+        startPt[0],
+        startPt[1],
+        endPt[0],
+        endPt[1]
+      );
+      const angleDiff = Math.abs(
+        (((result.carHeadingDeg - drawnBearing) % 360) + 540) % 360 - 180
+      );
+      directionToUse = angleDiff <= 90 ? 'forward' : 'reverse';
+    }
+
+    setSnapStatusMsg(null);
 
     const newStretch: CoverageAnnotation = {
       id: `rs-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -1248,10 +1313,11 @@ export const CoverageNotesTab: React.FC = () => {
       label: '',
       notes: '',
       tagIds: [],
+      roadPois: [],
       sideLines: [],
-      carHeadingDeg,
-      captureDate,
-      panoId,
+      carHeadingDeg: result.carHeadingDeg,
+      captureDate: result.captureDate,
+      panoId: result.panoId,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -1261,11 +1327,61 @@ export const CoverageNotesTab: React.FC = () => {
     setDraftPoints([]);
   };
 
-  // Attach a Side Line along the nearest Marked Road Stretch
+  /**
+   * Places a Point of Interest (POI) on the nearest Marked Road Stretch.
+   */
+  const addPointOfInterestOnRoadStretch = (lat: number, lng: number) => {
+    const roadStretches = annotations.filter(
+      (a) => a.type === 'road-stretch' && a.points && a.points.length >= 2
+    );
+    if (roadStretches.length === 0) {
+      setSnapStatusMsg('Mark a road stretch first before adding a Road POI.');
+      window.setTimeout(() => setSnapStatusMsg(null), 2600);
+      return;
+    }
+
+    let bestStretch: CoverageAnnotation | null = null;
+    let bestProj: ReturnType<typeof projectPointOntoRoadStretch> | null = null;
+
+    for (const rs of roadStretches) {
+      const proj = projectPointOntoRoadStretch(lat, lng, rs.points!);
+      if (!bestProj || proj.distanceDeg < bestProj.distanceDeg) {
+        bestProj = proj;
+        bestStretch = rs;
+      }
+    }
+
+    if (!bestStretch || !bestProj) return;
+
+    const existingPois = bestStretch.roadPois || [];
+    const newPoi: RoadPointOfInterest = {
+      id: `poi-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+      label: `P${existingPois.length + 1}`,
+      frac: Math.round(bestProj.frac * 1000) / 1000,
+      position: bestProj.snappedPos,
+      color: activeColor,
+    };
+
+    const nextAnnotations = annotations.map((a) =>
+      a.id === bestStretch!.id
+        ? {
+            ...a,
+            roadPois: [...existingPois, newPoi].sort((x, y) => x.frac - y.frac),
+            updatedAt: Date.now(),
+          }
+        : a
+    );
+    commitAnnotations(nextAnnotations);
+    setSelectedAnnotationId(bestStretch.id);
+  };
+
+  /**
+   * Attaches a Side Line along the nearest Marked Road Stretch, automatically snapping
+   * to nearby Road POIs (or bounding between two Road POIs on single-click) when applicable.
+   */
   const attachSideLineFromStroke = (strokePts: Array<[number, number]>) => {
     let tagId = activeSideLineTagId;
     if (!tagId) {
-      // Auto-create a first Side Line Tag if the user hasn't created one yet
       const defaultTag: SideLineTagDefinition = {
         id: `slt-${Date.now()}`,
         name: newSideLineTagName.trim() || 'Side Line 1',
@@ -1286,11 +1402,14 @@ export const CoverageNotesTab: React.FC = () => {
     const firstPt = strokePts[0];
     const lastPt = strokePts[strokePts.length - 1];
 
-    // Find closest road stretch to firstPt
     let bestStretch: CoverageAnnotation | null = null;
     let bestDist = Infinity;
     for (const rs of roadStretches) {
-      const proj = projectPointOntoRoadStretch(firstPt[0], firstPt[1], rs.points!);
+      const proj = projectPointOntoRoadStretch(
+        firstPt[0],
+        firstPt[1],
+        rs.points!
+      );
       if (proj.distanceDeg < bestDist) {
         bestDist = proj.distanceDeg;
         bestStretch = rs;
@@ -1310,16 +1429,64 @@ export const CoverageNotesTab: React.FC = () => {
       bestStretch.points
     );
 
+    const sortedPois = [...(bestStretch.roadPois || [])].sort(
+      (a, b) => a.frac - b.frac
+    );
+
     const isSingleClick =
       strokePts.length === 1 ||
       Math.abs(projEnd.frac - projStart.frac) < 0.025;
 
-    const startFrac = isSingleClick
-      ? 0
-      : Math.max(0, Math.min(projStart.frac, projEnd.frac));
-    const endFrac = isSingleClick
-      ? 1
-      : Math.min(1, Math.max(projStart.frac, projEnd.frac));
+    let startFrac = 0;
+    let endFrac = 1;
+    let startPoiId: string | undefined;
+    let endPoiId: string | undefined;
+
+    if (isSingleClick) {
+      // If single-clicked on a road stretch that has POIs, bound between the surrounding POIs (or start/end of road)
+      if (sortedPois.length > 0) {
+        const clickF = projStart.frac;
+        const prevPoi = [...sortedPois].reverse().find((p) => p.frac <= clickF);
+        const nextPoi = sortedPois.find((p) => p.frac > clickF);
+        if (prevPoi) {
+          startFrac = prevPoi.frac;
+          startPoiId = prevPoi.id;
+        } else {
+          startFrac = 0;
+        }
+        if (nextPoi) {
+          endFrac = nextPoi.frac;
+          endPoiId = nextPoi.id;
+        } else {
+          endFrac = 1;
+        }
+      } else {
+        startFrac = 0;
+        endFrac = 1;
+      }
+    } else {
+      const rawStart = Math.max(0, Math.min(projStart.frac, projEnd.frac));
+      const rawEnd = Math.min(1, Math.max(projStart.frac, projEnd.frac));
+      startFrac = rawStart;
+      endFrac = rawEnd;
+
+      // Snap start/end to nearby Road POIs if within 4% arc-length
+      const nearStartPoi = sortedPois.find(
+        (p) => Math.abs(p.frac - rawStart) <= 0.04
+      );
+      if (nearStartPoi) {
+        startFrac = nearStartPoi.frac;
+        startPoiId = nearStartPoi.id;
+      }
+      const nearEndPoi = sortedPois.find(
+        (p) =>
+          p.id !== nearStartPoi?.id && Math.abs(p.frac - rawEnd) <= 0.04
+      );
+      if (nearEndPoi) {
+        endFrac = nearEndPoi.frac;
+        endPoiId = nearEndPoi.id;
+      }
+    }
 
     const newAttachment: RoadSideLineAttachment = {
       id: `sl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -1327,6 +1494,8 @@ export const CoverageNotesTab: React.FC = () => {
       side: projStart.side,
       startFrac: Math.round(startFrac * 1000) / 1000,
       endFrac: Math.round(endFrac * 1000) / 1000,
+      startPoiId,
+      endPoiId,
     };
 
     const nextAnnotations = annotations.map((a) =>
@@ -1385,7 +1554,6 @@ export const CoverageNotesTab: React.FC = () => {
       return;
     }
 
-    // Clicking off on the map while not in inspect mode clears temporary Street View sphere
     if (svMeta && !markedSphereForActivePano) {
       closeTemporaryStreetView();
     }
@@ -1395,33 +1563,46 @@ export const CoverageNotesTab: React.FC = () => {
       return;
     }
 
+    if (activeTool === 'road-poi') {
+      addPointOfInterestOnRoadStretch(lat, lng);
+      return;
+    }
+
     if (activeTool === 'road-stretch') {
       if (roadSnapSubMode === 'single-section') {
-        setIsSnappingRoad(true);
+        setSnapStatusMsg(
+          'Verifying official Street View coverage & snapping section...'
+        );
         const section = await fetchSingleClickRoadSection(lat, lng, mapZoom);
-        setIsSnappingRoad(false);
-        if (section && section.points.length >= 2) {
-          const newStretch: CoverageAnnotation = {
-            id: `rs-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            notebookId: activeNotebookId,
-            type: 'road-stretch',
-            points: section.points,
-            color: activeColor,
-            strokeWidth: activeStrokeWidth,
-            direction: activeDirection,
-            carHeadingDeg: section.carHeadingDeg,
-            captureDate: section.captureDate,
-            panoId: section.panoId,
-            label: '',
-            notes: '',
-            tagIds: [],
-            sideLines: [],
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-          };
-          commitAnnotations([...annotations, newStretch]);
-          setSelectedAnnotationId(newStretch.id);
+        if (!section || section.points.length < 2) {
+          setSnapStatusMsg(
+            'Rejected: No official Street View coverage at that location.'
+          );
+          window.setTimeout(() => setSnapStatusMsg(null), 3200);
+          return;
         }
+        setSnapStatusMsg(null);
+        const newStretch: CoverageAnnotation = {
+          id: `rs-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          notebookId: activeNotebookId,
+          type: 'road-stretch',
+          points: section.points,
+          color: activeColor,
+          strokeWidth: activeStrokeWidth,
+          direction: activeDirection,
+          carHeadingDeg: section.carHeadingDeg,
+          captureDate: section.captureDate,
+          panoId: section.panoId,
+          label: '',
+          notes: '',
+          tagIds: [],
+          roadPois: [],
+          sideLines: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        commitAnnotations([...annotations, newStretch]);
+        setSelectedAnnotationId(newStretch.id);
         return;
       }
 
@@ -1450,14 +1631,12 @@ export const CoverageNotesTab: React.FC = () => {
     }
 
     if (activeTool === 'pin') {
-      const catInfo = PIN_CATEGORY_INFO[activePinCategory];
       const newPin: CoverageAnnotation = {
         id: `pin-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         notebookId: activeNotebookId,
         type: 'pin',
         position: [lat, lng],
-        color: catInfo.defaultColor,
-        pinCategory: activePinCategory,
+        color: activeColor,
         label: '',
         notes: '',
         tagIds: [],
@@ -1469,7 +1648,6 @@ export const CoverageNotesTab: React.FC = () => {
     }
   };
 
-  // Keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -1518,7 +1696,6 @@ export const CoverageNotesTab: React.FC = () => {
     closeTemporaryStreetView,
   ]);
 
-  // Compute Hierarchical Tag Tree Filter + Side-Line Cardinal Filter
   const expandedFilterTagIds = useMemo(() => {
     const set = new Set<string>();
     for (const id of selectedFilterTagIds) {
@@ -1535,11 +1712,6 @@ export const CoverageNotesTab: React.FC = () => {
     return map;
   }, [sideLineTags]);
 
-  /**
-   * Filters annotations based on:
-   * 1. Selected tags in the user's Tag Tree (including descendant subtags)
-   * 2. Selected Side Line Tag & Cardinal Direction relative to road ('N', 'S', 'E', 'W', etc.)
-   */
   const filteredAnnotationsWithMatchingSideSegments = useMemo(() => {
     const hasTagFilter = expandedFilterTagIds.size > 0;
     const hasSideLineFilter =
@@ -1557,7 +1729,6 @@ export const CoverageNotesTab: React.FC = () => {
           return { ann, matchingSideSegments: null };
         }
 
-        // When filtering by Side Line Tag or Cardinal Side of Road, only road stretches with matching side lines match
         if (
           ann.type !== 'road-stretch' ||
           !ann.points ||
@@ -1584,10 +1755,15 @@ export const CoverageNotesTab: React.FC = () => {
           const slDef = sideLineTagById.get(sl.sideLineTagId);
           const color = slDef?.color || '#f43f5e';
 
+          const [resolvedStart, resolvedEnd] = resolveSideLineFractions(
+            sl,
+            ann.roadPois
+          );
+
           const subPts = extractSubPolylineByFraction(
             ann.points!,
-            sl.startFrac,
-            sl.endFrac
+            resolvedStart,
+            resolvedEnd
           );
           if (subPts.length < 2) return;
 
@@ -1607,7 +1783,6 @@ export const CoverageNotesTab: React.FC = () => {
             return;
           }
 
-          // Filter individual sub-segments by whether the side line lies on the chosen cardinal side of the road
           let currentRun: Array<[number, number]> = [];
           for (let i = 0; i < subPts.length - 1; i++) {
             const outwardBearing = computeSideOutwardCompassBearing(
@@ -1668,7 +1843,6 @@ export const CoverageNotesTab: React.FC = () => {
     mapZoom,
   ]);
 
-  // Create tag in Tag Tree
   const handleAddTagNode = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = newTagName.trim();
@@ -1693,7 +1867,6 @@ export const CoverageNotesTab: React.FC = () => {
     setSelectedFilterTagIds((prev) => prev.filter((id) => !toRemove.has(id)));
   };
 
-  // Create Side Line Tag
   const handleAddSideLineTag = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = newSideLineTagName.trim();
@@ -1810,7 +1983,6 @@ export const CoverageNotesTab: React.FC = () => {
     [svLineColor]
   );
 
-  // Recursive Tag Tree Renderer
   const renderTagTreeNodes = (
     parentId: string | null,
     depth: number,
@@ -1882,9 +2054,12 @@ export const CoverageNotesTab: React.FC = () => {
     });
   };
 
+  const showRightSidebar =
+    showTagManagerPanel || showStreetViewPanel || Boolean(selectedAnnotation);
+
   return (
     <div className="h-[calc(100dvh-3.5rem)] flex flex-col bg-slate-950 text-slate-100 select-none overflow-hidden">
-      {/* Hidden SVG Filter that recolors the official Google Street View coverage tiles to any user-chosen color */}
+      {/* Hidden SVG Filter that recolors the official Google Street View coverage tiles */}
       <svg className="w-0 h-0 absolute pointer-events-none" aria-hidden="true">
         <defs>
           <filter id="sv-custom-line-color" colorInterpolationFilters="sRGB">
@@ -2022,7 +2197,7 @@ export const CoverageNotesTab: React.FC = () => {
             )}
           </div>
 
-          {/* Tag Tree & Side-Line Cardinal Filter Button */}
+          {/* Tags & Filters Sidebar Toggle */}
           <button
             type="button"
             onClick={() => setShowTagManagerPanel((v) => !v)}
@@ -2031,7 +2206,7 @@ export const CoverageNotesTab: React.FC = () => {
               selectedFilterTagIds.length > 0 ||
               selectedFilterSideLineTagId !== 'all' ||
               cardinalDirectionFilter !== 'all'
-                ? 'bg-indigo-600/25 border-indigo-500 text-indigo-200'
+                ? 'bg-indigo-600 border-indigo-400 text-white'
                 : 'bg-slate-950 border-slate-800 text-slate-300 hover:text-white'
             }`}
           >
@@ -2040,7 +2215,7 @@ export const CoverageNotesTab: React.FC = () => {
             {(selectedFilterTagIds.length > 0 ||
               selectedFilterSideLineTagId !== 'all' ||
               cardinalDirectionFilter !== 'all') && (
-              <span className="px-1 rounded bg-indigo-500 text-white text-[10px]">
+              <span className="px-1 rounded bg-amber-400 text-slate-950 text-[10px]">
                 Active
               </span>
             )}
@@ -2102,25 +2277,31 @@ export const CoverageNotesTab: React.FC = () => {
                 id: 'inspect',
                 label: 'Street View',
                 icon: Navigation,
-                tip: 'Click any road to open 360° Street View (Alt+Click works in any tool)',
+                tip: 'Click any covered road to open 360° Street View (Alt+Click works in any tool)',
               },
               {
                 id: 'road-stretch',
                 label: 'Road Stretch',
                 icon: GitCommitHorizontal,
-                tip: 'Freedraw or select road sections snapped to exact road geometry + driving arrows',
+                tip: 'Snap road stretches strictly to roads with official Street View coverage',
+              },
+              {
+                id: 'road-poi',
+                label: 'Road POI',
+                icon: Crosshair,
+                tip: 'Click along any marked road stretch to add a Point of Interest (usable as a Side Line boundary)',
               },
               {
                 id: 'side-line',
                 label: 'Road Side Line',
                 icon: GitBranch,
-                tip: 'Drag or click along the side of any marked road stretch to add pole/fence lines',
+                tip: 'Click or drag along either side of a marked road stretch to attach a side line',
               },
               {
                 id: 'freehand',
                 label: 'Freehand Pen',
                 icon: Pencil,
-                tip: 'Draw freehand lines without road snapping',
+                tip: 'Draw freehand lines on the map',
               },
               {
                 id: 'text',
@@ -2130,7 +2311,7 @@ export const CoverageNotesTab: React.FC = () => {
               },
               {
                 id: 'pin',
-                label: 'Meta Pin',
+                label: 'Pin',
                 icon: MapPin,
                 tip: 'Drop a pin with optional sketch canvas',
               },
@@ -2138,13 +2319,13 @@ export const CoverageNotesTab: React.FC = () => {
                 id: 'select',
                 label: 'Select / Edit',
                 icon: MousePointer,
-                tip: 'Select and edit any road stretch, side line, sphere, text, or pin',
+                tip: 'Select and edit any road stretch, POI, side line, sphere, text, or pin',
               },
               {
                 id: 'eraser',
                 label: 'Eraser',
                 icon: Eraser,
-                tip: 'Click any road stretch, marked sphere, text, or pin to delete it',
+                tip: 'Click any road stretch, POI, side line, marked sphere, text, or pin to delete it',
               },
             ] as const
           ).map((tool) => {
@@ -2229,7 +2410,7 @@ export const CoverageNotesTab: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setAutoDetectCarDir((v) => !v)}
-                title="Automatically query Google Street View on the snapped road to orient the driving arrow in the official Google car direction"
+                title="Automatically orient the driving arrow to match the official Google car direction"
                 className={`inline-flex items-center gap-1 px-2 py-1 rounded border text-[11px] font-bold cursor-pointer ${
                   autoDetectCarDir
                     ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
@@ -2267,11 +2448,7 @@ export const CoverageNotesTab: React.FC = () => {
                     </option>
                   ))}
                 </select>
-              ) : (
-                <span className="text-amber-300 text-[10px]">
-                  Create a Side Line Tag below or in Tags & Filters →
-                </span>
-              )}
+              ) : null}
               <input
                 type="text"
                 value={newSideLineTagName}
@@ -2308,22 +2485,6 @@ export const CoverageNotesTab: React.FC = () => {
               <ArrowUpRight className="w-3.5 h-3.5" />
               <span>Arrowhead: {freehandArrowEnd ? 'On' : 'Off'}</span>
             </button>
-          )}
-
-          {activeTool === 'pin' && (
-            <select
-              value={activePinCategory}
-              onChange={(e) =>
-                setActivePinCategory(e.target.value as MetaPinCategory)
-              }
-              className="px-2 py-1 rounded bg-slate-950 border border-slate-800 text-white text-[11px] font-bold cursor-pointer"
-            >
-              {Object.entries(PIN_CATEGORY_INFO).map(([k, v]) => (
-                <option key={k} value={k}>
-                  Pin: {v.label}
-                </option>
-              ))}
-            </select>
           )}
 
           {/* Color Swatches & Stroke Width */}
@@ -2454,7 +2615,7 @@ export const CoverageNotesTab: React.FC = () => {
               />
             )}
 
-            {/* Official Google Street View Coverage Layer with Customizable Color & Opacity */}
+            {/* Official Google Street View Coverage Layer */}
             {showOfficialCoverage && (
               <TileLayer
                 key="official-sv-coverage"
@@ -2484,7 +2645,6 @@ export const CoverageNotesTab: React.FC = () => {
                     );
                     const midPt = ann.points[Math.floor(ann.points.length / 2)];
 
-                    // Compute side line polylines (either cardinal-filtered or all attached side lines)
                     const sidePolylines: Array<{
                       id: string;
                       color: string;
@@ -2499,10 +2659,12 @@ export const CoverageNotesTab: React.FC = () => {
                         : (ann.sideLines || [])
                             .map((sl, idx) => {
                               const def = sideLineTagById.get(sl.sideLineTagId);
+                              const [resolvedStart, resolvedEnd] =
+                                resolveSideLineFractions(sl, ann.roadPois);
                               const subPts = extractSubPolylineByFraction(
                                 ann.points!,
-                                sl.startFrac,
-                                sl.endFrac
+                                resolvedStart,
+                                resolvedEnd
                               );
                               if (subPts.length < 2) return null;
                               return {
@@ -2528,7 +2690,6 @@ export const CoverageNotesTab: React.FC = () => {
 
                     return (
                       <React.Fragment key={ann.id}>
-                        {/* Selection Halo */}
                         {isSelected && (
                           <Polyline
                             positions={ann.points}
@@ -2540,7 +2701,6 @@ export const CoverageNotesTab: React.FC = () => {
                           />
                         )}
 
-                        {/* Main Road Stretch / Freehand Polyline */}
                         <Polyline
                           positions={ann.points}
                           pathOptions={{
@@ -2554,6 +2714,11 @@ export const CoverageNotesTab: React.FC = () => {
                               L.DomEvent.stopPropagation(e);
                               if (activeTool === 'eraser') {
                                 deleteAnnotationById(ann.id);
+                              } else if (activeTool === 'road-poi') {
+                                addPointOfInterestOnRoadStretch(
+                                  e.latlng.lat,
+                                  e.latlng.lng
+                                );
                               } else {
                                 setSelectedAnnotationId(ann.id);
                               }
@@ -2561,13 +2726,15 @@ export const CoverageNotesTab: React.FC = () => {
                           }}
                         />
 
-                        {/* Directional Chevrons rendered as native Leaflet Polylines */}
                         {chevrons.length > 0 && (
                           <Polyline
                             positions={chevrons}
                             pathOptions={{
                               color: ann.color,
-                              weight: Math.max(2.5, (ann.strokeWidth || 4) * 0.85),
+                              weight: Math.max(
+                                2.5,
+                                (ann.strokeWidth || 4) * 0.85
+                              ),
                               opacity:
                                 cardinalDirectionFilter !== 'all' ? 0.45 : 0.95,
                             }}
@@ -2575,7 +2742,7 @@ export const CoverageNotesTab: React.FC = () => {
                           />
                         )}
 
-                        {/* Attached Road Side Lines (Poles / Fences / Roadside Features) */}
+                        {/* Attached Road Side Lines */}
                         {sidePolylines.map((sl) => (
                           <React.Fragment key={sl.id}>
                             {cardinalDirectionFilter !== 'all' && (
@@ -2601,7 +2768,6 @@ export const CoverageNotesTab: React.FC = () => {
                                 click: (e) => {
                                   L.DomEvent.stopPropagation(e);
                                   if (activeTool === 'eraser') {
-                                    // Erase just this side line if in eraser mode
                                     const nextSideLines = (
                                       ann.sideLines || []
                                     ).filter(
@@ -2622,7 +2788,52 @@ export const CoverageNotesTab: React.FC = () => {
                           </React.Fragment>
                         ))}
 
-                        {/* Optional Inline Label on Road Stretch */}
+                        {/* Points of Interest (POIs) along this Road Stretch */}
+                        {(ann.roadPois || []).map((poi) => (
+                          <React.Fragment key={poi.id}>
+                            <CircleMarker
+                              center={poi.position}
+                              radius={6}
+                              pathOptions={{
+                                fillColor: poi.color || '#ffffff',
+                                fillOpacity: 1,
+                                color: '#0f172a',
+                                weight: 2,
+                              }}
+                              eventHandlers={{
+                                click: (e) => {
+                                  L.DomEvent.stopPropagation(e);
+                                  if (activeTool === 'eraser') {
+                                    const nextPois = (
+                                      ann.roadPois || []
+                                    ).filter((p) => p.id !== poi.id);
+                                    const nextAnns = annotations.map((a) =>
+                                      a.id === ann.id
+                                        ? { ...a, roadPois: nextPois }
+                                        : a
+                                    );
+                                    commitAnnotations(nextAnns);
+                                  } else {
+                                    setSelectedAnnotationId(ann.id);
+                                  }
+                                },
+                              }}
+                            />
+                            {poi.label && (
+                              <Marker
+                                position={poi.position}
+                                icon={L.divIcon({
+                                  className: 'coverage-clean-text-icon',
+                                  html: `<div style="transform:translate(-50%,-135%);white-space:nowrap;font-weight:800;font-size:11px;color:#0f172a;background:rgba(255,255,255,0.88);padding:0px 4px;border-radius:3px;border:1px solid ${
+                                    poi.color || '#0f172a'
+                                  };">${poi.label}</div>`,
+                                })}
+                                interactive={false}
+                              />
+                            )}
+                          </React.Fragment>
+                        ))}
+
                         {ann.label && (
                           <Marker
                             position={midPt}
@@ -2646,7 +2857,6 @@ export const CoverageNotesTab: React.FC = () => {
                     );
                   }
 
-                  // Clean Text Label without any obscuring point/dot
                   if (ann.type === 'text' && ann.position) {
                     return (
                       <Marker
@@ -2676,7 +2886,6 @@ export const CoverageNotesTab: React.FC = () => {
                     );
                   }
 
-                  // Marked Coverage Sphere (Deletable, shows saved view heading)
                   if (ann.type === 'sphere' && ann.position) {
                     const heading =
                       ann.viewHeadingDeg ?? ann.carHeadingDeg ?? 0;
@@ -2734,17 +2943,14 @@ export const CoverageNotesTab: React.FC = () => {
                     );
                   }
 
-                  // Meta Pin
                   if (ann.type === 'pin' && ann.position) {
-                    const cat =
-                      PIN_CATEGORY_INFO[ann.pinCategory || 'general'];
                     return (
                       <CircleMarker
                         key={ann.id}
                         center={ann.position}
                         radius={isSelected ? 9 : 7}
                         pathOptions={{
-                          fillColor: ann.color || cat.defaultColor,
+                          fillColor: ann.color || '#dc2626',
                           fillOpacity: 0.95,
                           color: isSelected ? '#38bdf8' : '#ffffff',
                           weight: 2,
@@ -2832,236 +3038,230 @@ export const CoverageNotesTab: React.FC = () => {
             )}
           </MapContainer>
 
-          {/* Floating Tag Tree & Side-Line Cardinal Filter Panel */}
-          {showTagManagerPanel && (
-            <div className="absolute top-3 left-3 z-30 w-80 max-h-[calc(100%-24px)] overflow-y-auto bg-slate-900/95 backdrop-blur border border-slate-700 rounded-xl p-3 shadow-2xl space-y-3 text-xs">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <span className="font-bold text-white flex items-center gap-1.5">
-                  <Filter className="w-3.5 h-3.5 text-indigo-400" />
-                  TAG TREE & SIDE-LINE FILTERS
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowTagManagerPanel(false)}
-                  className="text-slate-400 hover:text-white cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Section 1: User-Created Hierarchical Tag Tree */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-slate-300">
-                    ROAD TAG TREE (Hierarchical Filter)
-                  </span>
-                  {selectedFilterTagIds.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedFilterTagIds([])}
-                      className="text-[10px] text-indigo-400 hover:underline cursor-pointer"
-                    >
-                      Clear Filter
-                    </button>
-                  )}
-                </div>
-
-                {tagTree.length === 0 ? (
-                  <div className="text-[11px] text-slate-500 bg-slate-950 p-2 rounded border border-slate-800">
-                    No tags yet. Create root tags and subtags below (e.g.{' '}
-                    <code>moon</code> → <code>west moon</code>).
-                  </div>
-                ) : (
-                  <div className="bg-slate-950 p-2 rounded border border-slate-800 max-h-44 overflow-y-auto space-y-0.5">
-                    {renderTagTreeNodes(null, 0, 'filter')}
-                  </div>
-                )}
-
-                {/* Add Tag / Subtag Form */}
-                <form onSubmit={handleAddTagNode} className="space-y-1.5 pt-1">
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="text"
-                      value={newTagName}
-                      onChange={(e) => setNewTagName(e.target.value)}
-                      placeholder="New tag name..."
-                      className="flex-1 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-white text-[11px] outline-none"
-                    />
-                    <input
-                      type="color"
-                      value={newTagColor}
-                      onChange={(e) => setNewTagColor(e.target.value)}
-                      className="w-5 h-5 rounded bg-transparent border-0 cursor-pointer"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <select
-                      value={newTagParentId}
-                      onChange={(e) => setNewTagParentId(e.target.value)}
-                      className="flex-1 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-slate-300 text-[11px]"
-                    >
-                      <option value="">Root Tag (No Parent)</option>
-                      {tagTree.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          Subtag of: {t.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="submit"
-                      className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] cursor-pointer"
-                    >
-                      +Add Tag
-                    </button>
-                  </div>
-                </form>
-              </div>
-
-              {/* Section 2: Side Line Tags & Cardinal Side-of-Road Filter */}
-              <div className="border-t border-slate-800 pt-2.5 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-slate-300">
-                    SIDE LINE TAGS & CARDINAL SIDE FILTER
-                  </span>
-                  {(selectedFilterSideLineTagId !== 'all' ||
-                    cardinalDirectionFilter !== 'all') && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedFilterSideLineTagId('all');
-                        setCardinalDirectionFilter('all');
-                      }}
-                      className="text-[10px] text-indigo-400 hover:underline cursor-pointer"
-                    >
-                      Reset
-                    </button>
-                  )}
-                </div>
-
-                {/* Filter by Side Line Tag */}
-                <div className="space-y-1">
-                  <label className="block text-[10px] text-slate-400">
-                    Filter by Side Line Feature (Pole / Fence Type):
-                  </label>
-                  <select
-                    value={selectedFilterSideLineTagId}
-                    onChange={(e) =>
-                      setSelectedFilterSideLineTagId(e.target.value)
-                    }
-                    className="w-full px-2 py-1 rounded bg-slate-950 border border-slate-800 text-white text-[11px]"
-                  >
-                    <option value="all">All / Any Side Line Tag</option>
-                    {sideLineTags.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Filter by Cardinal Direction relative to Road */}
-                <div className="space-y-1">
-                  <label className="block text-[10px] text-slate-400">
-                    Show where Side Line is on Cardinal Side of Road:
-                  </label>
-                  <div className="grid grid-cols-3 gap-1">
-                    {(
-                      [
-                        'all',
-                        'N',
-                        'S',
-                        'E',
-                        'W',
-                        'NE',
-                        'NW',
-                        'SE',
-                        'SW',
-                      ] as const
-                    ).map((dir) => (
-                      <button
-                        key={dir}
-                        type="button"
-                        onClick={() => setCardinalDirectionFilter(dir)}
-                        className={`px-2 py-1 rounded border text-[10px] font-bold cursor-pointer ${
-                          cardinalDirectionFilter === dir
-                            ? 'bg-emerald-600 border-emerald-400 text-white'
-                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        {dir === 'all' ? 'All Sides' : `${dir} of Road`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Manage Side Line Tags List */}
-                {sideLineTags.length > 0 && (
-                  <div className="bg-slate-950 p-2 rounded border border-slate-800 space-y-1 max-h-32 overflow-y-auto">
-                    {sideLineTags.map((t) => (
-                      <div
-                        key={t.id}
-                        className="flex items-center justify-between text-[11px]"
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className="w-3 h-1.5 rounded"
-                            style={{ backgroundColor: t.color }}
-                          />
-                          <span className="text-slate-200">{t.name}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteSideLineTag(t.id)}
-                          className="text-slate-500 hover:text-rose-400 cursor-pointer"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Create New Side Line Tag */}
-                <form
-                  onSubmit={handleAddSideLineTag}
-                  className="flex items-center gap-1 pt-1"
-                >
-                  <input
-                    type="text"
-                    value={newSideLineTagName}
-                    onChange={(e) => setNewSideLineTagName(e.target.value)}
-                    placeholder="New side line tag (e.g. pole type)..."
-                    className="flex-1 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-white text-[11px] outline-none"
-                  />
-                  <input
-                    type="color"
-                    value={newSideLineTagColor}
-                    onChange={(e) => setNewSideLineTagColor(e.target.value)}
-                    className="w-5 h-5 rounded bg-transparent border-0 cursor-pointer"
-                  />
-                  <button
-                    type="submit"
-                    className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] cursor-pointer"
-                  >
-                    +Add
-                  </button>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {/* Status Indicator when Snapping Road Geometry */}
-          {isSnappingRoad && (
-            <div className="absolute bottom-3 left-3 z-20 px-3 py-1.5 rounded-lg bg-indigo-950/90 border border-indigo-500/50 text-xs font-bold text-indigo-200 shadow-lg">
-              Snapping to exact road geometry...
+          {/* Status Banner for Coverage Verification / Road Snapping */}
+          {snapStatusMsg && (
+            <div className="absolute bottom-3 left-3 z-[1000] px-3 py-1.5 rounded-lg bg-slate-900/95 border border-indigo-500/60 text-xs font-bold text-indigo-200 shadow-xl pointer-events-none">
+              {snapStatusMsg}
             </div>
           )}
         </div>
 
-        {/* Right Side Panel: Split-Screen Street View Viewer & Annotation Inspector */}
-        {(showStreetViewPanel || selectedAnnotation) && (
-          <div className="w-full lg:w-[460px] xl:w-[520px] border-t lg:border-t-0 lg:border-l border-slate-800 bg-slate-900 flex flex-col max-h-[55dvh] lg:max-h-none z-20">
-            {/* Top Half: Official Street View Panorama Panel */}
+        {/* Right Sidebar: Dedicated Tags & Filters Panel, Split-Screen Street View & Annotation Inspector */}
+        {showRightSidebar && (
+          <div className="w-full lg:w-[460px] xl:w-[520px] border-t lg:border-t-0 lg:border-l border-slate-800 bg-slate-900 flex flex-col max-h-[60dvh] lg:max-h-none z-30 overflow-y-auto">
+            {/* Section A: Tags & Filters Manager (when toggled open) */}
+            {showTagManagerPanel && (
+              <div className="p-3 border-b border-slate-800 bg-slate-900 space-y-3 text-xs">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <span className="font-bold text-white flex items-center gap-1.5">
+                    <Filter className="w-3.5 h-3.5 text-indigo-400" />
+                    TAGS & FILTERS
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowTagManagerPanel(false)}
+                    className="p-1 rounded bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Hierarchical Tag Tree */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-300">
+                      TAG TREE (Check to Filter)
+                    </span>
+                    {selectedFilterTagIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedFilterTagIds([])}
+                        className="text-[10px] text-indigo-400 hover:underline cursor-pointer"
+                      >
+                        Clear Filter
+                      </button>
+                    )}
+                  </div>
+
+                  {tagTree.length === 0 ? (
+                    <div className="text-[11px] text-slate-500 bg-slate-950 p-2 rounded border border-slate-800">
+                      No tags created yet. Add root tags and subtags below.
+                    </div>
+                  ) : (
+                    <div className="bg-slate-950 p-2 rounded border border-slate-800 max-h-44 overflow-y-auto space-y-0.5">
+                      {renderTagTreeNodes(null, 0, 'filter')}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleAddTagNode} className="space-y-1.5 pt-1">
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={newTagName}
+                        onChange={(e) => setNewTagName(e.target.value)}
+                        placeholder="New tag name..."
+                        className="flex-1 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-white text-[11px] outline-none"
+                      />
+                      <input
+                        type="color"
+                        value={newTagColor}
+                        onChange={(e) => setNewTagColor(e.target.value)}
+                        className="w-5 h-5 rounded bg-transparent border-0 cursor-pointer"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <select
+                        value={newTagParentId}
+                        onChange={(e) => setNewTagParentId(e.target.value)}
+                        className="flex-1 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-slate-300 text-[11px]"
+                      >
+                        <option value="">Root Tag (No Parent)</option>
+                        {tagTree.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            Subtag of: {t.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="submit"
+                        className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] cursor-pointer"
+                      >
+                        +Add Tag
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Side Line Tags & Cardinal Side-of-Road Filter */}
+                <div className="border-t border-slate-800 pt-2.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-300">
+                      SIDE LINE TAGS & CARDINAL SIDE FILTER
+                    </span>
+                    {(selectedFilterSideLineTagId !== 'all' ||
+                      cardinalDirectionFilter !== 'all') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedFilterSideLineTagId('all');
+                          setCardinalDirectionFilter('all');
+                        }}
+                        className="text-[10px] text-indigo-400 hover:underline cursor-pointer"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[10px] text-slate-400">
+                      Filter by Side Line Tag:
+                    </label>
+                    <select
+                      value={selectedFilterSideLineTagId}
+                      onChange={(e) =>
+                        setSelectedFilterSideLineTagId(e.target.value)
+                      }
+                      className="w-full px-2 py-1 rounded bg-slate-950 border border-slate-800 text-white text-[11px]"
+                    >
+                      <option value="all">All / Any Side Line Tag</option>
+                      {sideLineTags.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[10px] text-slate-400">
+                      Show where Side Line is on Cardinal Side of Road:
+                    </label>
+                    <div className="grid grid-cols-3 gap-1">
+                      {(
+                        [
+                          'all',
+                          'N',
+                          'S',
+                          'E',
+                          'W',
+                          'NE',
+                          'NW',
+                          'SE',
+                          'SW',
+                        ] as const
+                      ).map((dir) => (
+                        <button
+                          key={dir}
+                          type="button"
+                          onClick={() => setCardinalDirectionFilter(dir)}
+                          className={`px-2 py-1 rounded border text-[10px] font-bold cursor-pointer ${
+                            cardinalDirectionFilter === dir
+                              ? 'bg-emerald-600 border-emerald-400 text-white'
+                              : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          {dir === 'all' ? 'All Sides' : `${dir} of Road`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {sideLineTags.length > 0 && (
+                    <div className="bg-slate-950 p-2 rounded border border-slate-800 space-y-1 max-h-32 overflow-y-auto">
+                      {sideLineTags.map((t) => (
+                        <div
+                          key={t.id}
+                          className="flex items-center justify-between text-[11px]"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="w-3 h-1.5 rounded"
+                              style={{ backgroundColor: t.color }}
+                            />
+                            <span className="text-slate-200">{t.name}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSideLineTag(t.id)}
+                            className="text-slate-500 hover:text-rose-400 cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <form
+                    onSubmit={handleAddSideLineTag}
+                    className="flex items-center gap-1 pt-1"
+                  >
+                    <input
+                      type="text"
+                      value={newSideLineTagName}
+                      onChange={(e) => setNewSideLineTagName(e.target.value)}
+                      placeholder="New side line tag..."
+                      className="flex-1 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-white text-[11px] outline-none"
+                    />
+                    <input
+                      type="color"
+                      value={newSideLineTagColor}
+                      onChange={(e) => setNewSideLineTagColor(e.target.value)}
+                      className="w-5 h-5 rounded bg-transparent border-0 cursor-pointer"
+                    />
+                    <button
+                      type="submit"
+                      className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] cursor-pointer"
+                    >
+                      +Add
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Section B: Official Street View Panorama Panel */}
             {showStreetViewPanel && (
               <div className="flex-1 flex flex-col min-h-[260px] border-b border-slate-800">
                 <div className="px-3 py-2 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-2">
@@ -3095,7 +3295,6 @@ export const CoverageNotesTab: React.FC = () => {
                   <div className="flex items-center gap-1 shrink-0">
                     {svMeta && (
                       <>
-                        {/* Mark / Delete Coverage Sphere Button */}
                         <button
                           type="button"
                           onClick={handleMarkOrUnmarkActiveSphere}
@@ -3160,8 +3359,7 @@ export const CoverageNotesTab: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 360° Panorama Viewport */}
-                <div className="flex-1 relative bg-slate-950">
+                <div className="flex-1 relative bg-slate-950 min-h-[220px]">
                   {svLoading && (
                     <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 z-10 text-xs text-slate-300">
                       Loading official Google Street View panorama...
@@ -3172,7 +3370,7 @@ export const CoverageNotesTab: React.FC = () => {
                       {svStatusMessage}
                     </div>
                   )}
-                  {svMeta && ! useIframeFallback && (
+                  {svMeta && !useIframeFallback && (
                     <StreetViewSphericalViewer
                       panoId={svMeta.panoId}
                       carHeadingDeg={svMeta.carHeadingDeg}
@@ -3217,9 +3415,9 @@ export const CoverageNotesTab: React.FC = () => {
               </div>
             )}
 
-            {/* Bottom Half: Selected Annotation Inspector */}
+            {/* Section C: Selected Annotation Inspector */}
             {selectedAnnotation && (
-              <div className="p-3 space-y-3 overflow-y-auto max-h-[48dvh] text-xs">
+              <div className="p-3 space-y-3 text-xs">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                   <div className="font-bold text-white uppercase">
                     {selectedAnnotation.type.replace('-', ' ')} INSPECTOR
@@ -3246,7 +3444,7 @@ export const CoverageNotesTab: React.FC = () => {
                 {/* Label Input */}
                 <div className="space-y-1">
                   <label className="block text-[11px] font-bold text-slate-300">
-                    Map Label
+                    Label
                   </label>
                   <input
                     type="text"
@@ -3259,7 +3457,7 @@ export const CoverageNotesTab: React.FC = () => {
                   />
                 </div>
 
-                {/* Direction selector for Road Stretch */}
+                {/* Driving Direction Arrows */}
                 {(selectedAnnotation.type === 'road-stretch' ||
                   selectedAnnotation.type === 'freehand') && (
                   <div className="space-y-1">
@@ -3294,12 +3492,139 @@ export const CoverageNotesTab: React.FC = () => {
                   </div>
                 )}
 
-                {/* Road Stretch Side Lines Manager */}
+                {/* Points of Interest (POIs) Manager on Road Stretch */}
+                {selectedAnnotation.type === 'road-stretch' &&
+                  selectedAnnotation.points && (
+                    <div className="space-y-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-slate-300">
+                          POINTS OF INTEREST ({(selectedAnnotation.roadPois || []).length})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const existing = selectedAnnotation.roadPois || [];
+                            const frac = 0.5;
+                            const pos = interpolatePointOnPolylineByFraction(
+                              selectedAnnotation.points!,
+                              frac
+                            );
+                            const nextPoi: RoadPointOfInterest = {
+                              id: `poi-${Date.now()}`,
+                              label: `P${existing.length + 1}`,
+                              frac,
+                              position: pos,
+                              color: activeColor,
+                            };
+                            updateSelectedAnnotation({
+                              roadPois: [...existing, nextPoi].sort(
+                                (a, b) => a.frac - b.frac
+                              ),
+                            });
+                          }}
+                          className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold cursor-pointer"
+                        >
+                          +Add POI
+                        </button>
+                      </div>
+
+                      {(selectedAnnotation.roadPois || []).length === 0 ? (
+                        <div className="text-[10px] text-slate-500">
+                          Use the "Road POI" tool to click on this road stretch, or click "+Add POI" above.
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {(selectedAnnotation.roadPois || []).map((poi) => (
+                            <div
+                              key={poi.id}
+                              className="p-1.5 rounded bg-slate-900 border border-slate-800 space-y-1 text-[11px]"
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="color"
+                                  value={poi.color || '#ffffff'}
+                                  onChange={(e) => {
+                                    const next = (
+                                      selectedAnnotation.roadPois || []
+                                    ).map((p) =>
+                                      p.id === poi.id
+                                        ? { ...p, color: e.target.value }
+                                        : p
+                                    );
+                                    updateSelectedAnnotation({ roadPois: next });
+                                  }}
+                                  className="w-4 h-4 rounded bg-transparent border-0 cursor-pointer"
+                                />
+                                <input
+                                  type="text"
+                                  value={poi.label}
+                                  onChange={(e) => {
+                                    const next = (
+                                      selectedAnnotation.roadPois || []
+                                    ).map((p) =>
+                                      p.id === poi.id
+                                        ? { ...p, label: e.target.value }
+                                        : p
+                                    );
+                                    updateSelectedAnnotation({ roadPois: next });
+                                  }}
+                                  placeholder="POI label..."
+                                  className="flex-1 px-1.5 py-0.5 rounded bg-slate-950 border border-slate-700 text-white text-[11px] outline-none"
+                                />
+                                <span className="text-[10px] text-slate-400">
+                                  {Math.round(poi.frac * 100)}%
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const next = (
+                                      selectedAnnotation.roadPois || []
+                                    ).filter((p) => p.id !== poi.id);
+                                    updateSelectedAnnotation({ roadPois: next });
+                                  }}
+                                  className="text-slate-500 hover:text-rose-400 cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                              <input
+                                type="range"
+                                min={0}
+                                max={1}
+                                step={0.01}
+                                value={poi.frac}
+                                onChange={(e) => {
+                                  const f = Number(e.target.value);
+                                  const pos = interpolatePointOnPolylineByFraction(
+                                    selectedAnnotation.points!,
+                                    f
+                                  );
+                                  const next = (
+                                    selectedAnnotation.roadPois || []
+                                  )
+                                    .map((p) =>
+                                      p.id === poi.id
+                                        ? { ...p, frac: f, position: pos }
+                                        : p
+                                    )
+                                    .sort((a, b) => a.frac - b.frac);
+                                  updateSelectedAnnotation({ roadPois: next });
+                                }}
+                                className="w-full accent-indigo-500"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                {/* Road Stretch Side Lines Manager (Supports Both POI Boundaries and % Sliders) */}
                 {selectedAnnotation.type === 'road-stretch' && (
                   <div className="space-y-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-bold text-slate-300">
-                        ATTACHED SIDE LINES ({(selectedAnnotation.sideLines || []).length})
+                        SIDE LINES ({(selectedAnnotation.sideLines || []).length})
                       </span>
                       {sideLineTags.length > 0 && (
                         <div className="flex items-center gap-1">
@@ -3355,10 +3680,16 @@ export const CoverageNotesTab: React.FC = () => {
 
                     {(selectedAnnotation.sideLines || []).map((sl) => {
                       const def = sideLineTagById.get(sl.sideLineTagId);
+                      const pois = selectedAnnotation.roadPois || [];
+                      const [effStart, effEnd] = resolveSideLineFractions(
+                        sl,
+                        pois
+                      );
+
                       return (
                         <div
                           key={sl.id}
-                          className="p-2 rounded bg-slate-900 border border-slate-800 space-y-1.5 text-[11px]"
+                          className="p-2 rounded bg-slate-900 border border-slate-800 space-y-2 text-[11px]"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <select
@@ -3374,7 +3705,9 @@ export const CoverageNotesTab: React.FC = () => {
                                 updateSelectedAnnotation({ sideLines: next });
                               }}
                               className="bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-white font-bold"
-                              style={{ borderLeft: `4px solid ${def?.color || '#fff'}` }}
+                              style={{
+                                borderLeft: `4px solid ${def?.color || '#fff'}`,
+                              }}
                             >
                               {sideLineTags.map((t) => (
                                 <option key={t.id} value={t.id}>
@@ -3421,48 +3754,173 @@ export const CoverageNotesTab: React.FC = () => {
                             </div>
                           </div>
 
-                          {/* Start % and End % Range Controls */}
+                          {/* Start Boundary & End Boundary Selectors (POI or Custom %) */}
+                          {pois.length > 0 && (
+                            <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                              <div>
+                                <span className="text-slate-400 block mb-0.5">
+                                  From Boundary:
+                                </span>
+                                <select
+                                  value={
+                                    sl.startPoiId
+                                      ? `poi:${sl.startPoiId}`
+                                      : sl.startFrac === 0
+                                      ? 'start'
+                                      : 'custom'
+                                  }
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const next = (
+                                      selectedAnnotation.sideLines || []
+                                    ).map((item) => {
+                                      if (item.id !== sl.id) return item;
+                                      if (val === 'start') {
+                                        return {
+                                          ...item,
+                                          startPoiId: undefined,
+                                          startFrac: 0,
+                                        };
+                                      }
+                                      if (val.startsWith('poi:')) {
+                                        const pid = val.slice(4);
+                                        const found = pois.find(
+                                          (p) => p.id === pid
+                                        );
+                                        return {
+                                          ...item,
+                                          startPoiId: pid,
+                                          startFrac: found
+                                            ? found.frac
+                                            : item.startFrac,
+                                        };
+                                      }
+                                      return { ...item, startPoiId: undefined };
+                                    });
+                                    updateSelectedAnnotation({ sideLines: next });
+                                  }}
+                                  className="w-full bg-slate-950 border border-slate-700 rounded px-1 py-0.5 text-white"
+                                >
+                                  <option value="start">Road Start (0%)</option>
+                                  {pois.map((p) => (
+                                    <option key={p.id} value={`poi:${p.id}`}>
+                                      POI: {p.label} ({Math.round(p.frac * 100)}%)
+                                    </option>
+                                  ))}
+                                  <option value="custom">
+                                    Custom % ({Math.round(effStart * 100)}%)
+                                  </option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <span className="text-slate-400 block mb-0.5">
+                                  To Boundary:
+                                </span>
+                                <select
+                                  value={
+                                    sl.endPoiId
+                                      ? `poi:${sl.endPoiId}`
+                                      : sl.endFrac === 1
+                                      ? 'end'
+                                      : 'custom'
+                                  }
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const next = (
+                                      selectedAnnotation.sideLines || []
+                                    ).map((item) => {
+                                      if (item.id !== sl.id) return item;
+                                      if (val === 'end') {
+                                        return {
+                                          ...item,
+                                          endPoiId: undefined,
+                                          endFrac: 1,
+                                        };
+                                      }
+                                      if (val.startsWith('poi:')) {
+                                        const pid = val.slice(4);
+                                        const found = pois.find(
+                                          (p) => p.id === pid
+                                        );
+                                        return {
+                                          ...item,
+                                          endPoiId: pid,
+                                          endFrac: found
+                                            ? found.frac
+                                            : item.endFrac,
+                                        };
+                                      }
+                                      return { ...item, endPoiId: undefined };
+                                    });
+                                    updateSelectedAnnotation({ sideLines: next });
+                                  }}
+                                  className="w-full bg-slate-950 border border-slate-700 rounded px-1 py-0.5 text-white"
+                                >
+                                  <option value="end">Road End (100%)</option>
+                                  {pois.map((p) => (
+                                    <option key={p.id} value={`poi:${p.id}`}>
+                                      POI: {p.label} ({Math.round(p.frac * 100)}%)
+                                    </option>
+                                  ))}
+                                  <option value="custom">
+                                    Custom % ({Math.round(effEnd * 100)}%)
+                                  </option>
+                                </select>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Percentage Sliders along the Road */}
                           <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                            <span>Start {Math.round(sl.startFrac * 100)}%</span>
+                            <span>Start {Math.round(effStart * 100)}%</span>
                             <input
                               type="range"
                               min={0}
-                              max={0.95}
-                              step={0.02}
-                              value={sl.startFrac}
+                              max={0.98}
+                              step={0.01}
+                              value={effStart}
                               onChange={(e) => {
                                 const v = Math.min(
                                   Number(e.target.value),
-                                  sl.endFrac - 0.02
+                                  effEnd - 0.01
                                 );
                                 const next = (
                                   selectedAnnotation.sideLines || []
                                 ).map((item) =>
                                   item.id === sl.id
-                                    ? { ...item, startFrac: v }
+                                    ? {
+                                        ...item,
+                                        startPoiId: undefined,
+                                        startFrac: v,
+                                      }
                                     : item
                                 );
                                 updateSelectedAnnotation({ sideLines: next });
                               }}
                               className="flex-1 accent-indigo-500"
                             />
-                            <span>End {Math.round(sl.endFrac * 100)}%</span>
+                            <span>End {Math.round(effEnd * 100)}%</span>
                             <input
                               type="range"
-                              min={0.05}
+                              min={0.02}
                               max={1}
-                              step={0.02}
-                              value={sl.endFrac}
+                              step={0.01}
+                              value={effEnd}
                               onChange={(e) => {
                                 const v = Math.max(
                                   Number(e.target.value),
-                                  sl.startFrac + 0.02
+                                  effStart + 0.01
                                 );
                                 const next = (
                                   selectedAnnotation.sideLines || []
                                 ).map((item) =>
                                   item.id === sl.id
-                                    ? { ...item, endFrac: v }
+                                    ? {
+                                        ...item,
+                                        endPoiId: undefined,
+                                        endFrac: v,
+                                      }
                                     : item
                                 );
                                 updateSelectedAnnotation({ sideLines: next });
@@ -3476,9 +3934,9 @@ export const CoverageNotesTab: React.FC = () => {
                   </div>
                 )}
 
-                {/* Pole / Sign Sketch Canvas for Meta Pins */}
+                {/* Sketch Canvas for Pins */}
                 {selectedAnnotation.type === 'pin' && (
-                  <PoleSketchCanvas
+                  <PinSketchCanvas
                     value={selectedAnnotation.sketchDataUrl}
                     onChange={(dataUrl) =>
                       updateSelectedAnnotation({ sketchDataUrl: dataUrl })
@@ -3497,7 +3955,7 @@ export const CoverageNotesTab: React.FC = () => {
                       onClick={() => setShowTagManagerPanel(true)}
                       className="text-[10px] text-indigo-400 hover:underline cursor-pointer"
                     >
-                      Manage Tag Tree
+                      Open Tags & Filters
                     </button>
                   </div>
                   {tagTree.length === 0 ? (
@@ -3511,7 +3969,7 @@ export const CoverageNotesTab: React.FC = () => {
                   )}
                 </div>
 
-                {/* Detailed Notes */}
+                {/* Notes */}
                 <div className="space-y-1">
                   <label className="block text-[11px] font-bold text-slate-300">
                     Notes
