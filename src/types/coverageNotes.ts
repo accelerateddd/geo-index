@@ -1,4 +1,5 @@
 export type CoverageToolId =
+  | 'select'
   | 'inspect'
   | 'road-stretch'
   | 'road-poi'
@@ -6,7 +7,6 @@ export type CoverageToolId =
   | 'freehand'
   | 'text'
   | 'pin'
-  | 'select'
   | 'eraser';
 
 export type DrivingDirectionMode = 'forward' | 'reverse' | 'both' | 'none';
@@ -24,6 +24,10 @@ export type CardinalDirectionFilter =
   | 'SW'
   | 'NW';
 
+export type CoverageSeason = 'Summer' | 'Autumn' | 'Winter' | 'Spring';
+
+export type CameraGeneration = 'Gen 1' | 'Gen 2' | 'Gen 3' | 'Gen 4' | 'Unknown';
+
 export interface CoverageTagNode {
   id: string;
   name: string;
@@ -34,8 +38,8 @@ export interface CoverageTagNode {
 export interface SideLineTagDefinition {
   id: string;
   name: string;
+  parentId: string | null;
   color: string;
-  parentId?: string | null;
 }
 
 export interface RoadPointOfInterest {
@@ -65,6 +69,32 @@ export interface RoadSideLineAttachment {
   notes?: string;
 }
 
+/**
+ * Automatically extracted official Google Street View metadata for a contiguous sub-span
+ * [startFrac, endFrac] of a marked road stretch.
+ * Allows a single road stretch that crosses multiple capture dates, camera generations,
+ * or administrative regions to be filtered and highlighted accurately by sub-section.
+ */
+export interface RoadAutoMetaSpan {
+  startFrac: number;
+  endFrac: number;
+  panoId: string;
+  year?: number;
+  month?: number;
+  captureDate?: string;
+  season?: CoverageSeason;
+  cameraGen?: CameraGeneration;
+  countryCode?: string;
+  regionName?: string;
+  localityName?: string;
+  roadName?: string;
+  elevationMeters?: number;
+  carHeadingDeg?: number;
+  pitchDeg?: number;
+  rollDeg?: number;
+  historicalYears?: number[];
+}
+
 export interface CoverageAnnotation {
   id: string;
   notebookId: string;
@@ -83,20 +113,28 @@ export interface CoverageAnnotation {
   label?: string;
   /** Detailed notes */
   notes?: string;
-  /** Assigned tag IDs from the user's Tag Tree */
+  /** All assigned tag IDs (union of explicitTagIds and autoSelectedAncestorTagIds) */
   tagIds?: string[];
-  /** Points of interest (intersections, landmarks, boundaries) along this road stretch */
+  /** Tag IDs that were auto-selected only because a lower-level descendant tag was selected */
+  autoSelectedTagIds?: string[];
+  /** Points of interest along this road stretch */
   roadPois?: RoadPointOfInterest[];
   /** Attached side lines along segments of this road stretch */
   sideLines?: RoadSideLineAttachment[];
+  /** Automatically extracted per-segment official Street View metadata spans along the road stretch */
+  autoMetaSpans?: RoadAutoMetaSpan[];
   /** Optional mini-sketch data URL (PNG from embedded mini canvas) */
   sketchDataUrl?: string;
-  /** Official Street View panorama metadata (for marked spheres or linked stretches) */
+  /** Official Street View panorama metadata (for marked spheres or primary stretch info) */
   panoId?: string;
   carHeadingDeg?: number;
   viewHeadingDeg?: number;
   viewPitchDeg?: number;
   captureDate?: string;
+  cameraGen?: CameraGeneration;
+  countryCode?: string;
+  regionName?: string;
+  elevationMeters?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -117,17 +155,28 @@ export interface OfficialStreetViewMetadata {
   lng: number;
   carHeadingDeg: number;
   panoNorthDeg: number;
+  pitchDeg?: number;
+  rollDeg?: number;
   elevationMeters?: number;
   captureDate?: string;
+  year?: number;
+  month?: number;
+  season?: CoverageSeason;
+  cameraGen: CameraGeneration;
+  worldSize?: [number, number];
   description?: string;
+  roadName?: string;
+  localityName?: string;
+  regionName?: string;
   countryCode?: string;
+  rpcCopyright?: string;
+  historicalYears: number[];
   neighborLinks: Array<{
     panoId: string;
     headingDeg: number;
     lat?: number;
     lng?: number;
   }>;
-  /** Nearby sequence of panoramas along the same road returned by SingleImageSearch */
   roadSequence: Array<{
     panoId: string;
     lat: number;

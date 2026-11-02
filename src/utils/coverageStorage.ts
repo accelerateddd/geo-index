@@ -1,8 +1,11 @@
 import type {
+  CameraGeneration,
   CoverageAnnotation,
   CoverageNotebook,
+  CoverageSeason,
   CoverageTagNode,
   OfficialStreetViewMetadata,
+  RoadAutoMetaSpan,
   SideLineTagDefinition,
 } from '../types/coverageNotes';
 
@@ -28,6 +31,7 @@ export interface SvCoverageStylePrefs {
   color: string;
   opacity: number;
   visible: boolean;
+  sideLineMinZoom: number;
 }
 
 export function loadSvCoverageStylePrefs(): SvCoverageStylePrefs {
@@ -39,12 +43,14 @@ export function loadSvCoverageStylePrefs(): SvCoverageStylePrefs {
         color: typeof parsed.color === 'string' ? parsed.color : '#38bdf8',
         opacity: typeof parsed.opacity === 'number' ? parsed.opacity : 0.3,
         visible: typeof parsed.visible === 'boolean' ? parsed.visible : true,
+        sideLineMinZoom:
+          typeof parsed.sideLineMinZoom === 'number' ? parsed.sideLineMinZoom : 9,
       };
     }
   } catch {
     // ignore
   }
-  return { color: '#38bdf8', opacity: 0.3, visible: true };
+  return { color: '#38bdf8', opacity: 0.3, visible: true, sideLineMinZoom: 9 };
 }
 
 export function saveSvCoverageStylePrefs(prefs: SvCoverageStylePrefs): void {
@@ -79,7 +85,9 @@ export function loadSideLineTags(): SideLineTagDefinition[] {
     const raw = localStorage.getItem(SIDE_LINE_TAGS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as SideLineTagDefinition[];
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed)
+      ? parsed.map((t) => ({ ...t, parentId: t.parentId ?? null }))
+      : [];
   } catch {
     return [];
   }
@@ -168,10 +176,139 @@ export function exportNotebookJson(
 }
 
 /**
+ * Computes meteorological season from month (1..12) and latitude (Southern vs Northern Hemisphere).
+ */
+export function computeHemisphereSeason(
+  month: number,
+  lat: number
+): CoverageSeason {
+  const isSouthern = lat < 0;
+  if (month === 12 || month === 1 || month === 2) {
+    return isSouthern ? 'Summer' : 'Winter';
+  }
+  if (month >= 3 && month <= 5) {
+    return isSouthern ? 'Autumn' : 'Spring';
+  }
+  if (month >= 6 && month <= 8) {
+    return isSouthern ? 'Winter' : 'Summer';
+  }
+  return isSouthern ? 'Spring' : 'Autumn';
+}
+
+/**
+ * Infers Google Street View camera generation from full equirectangular dimensions [height, width] and capture year.
+ */
+export function inferCameraGeneration(
+  worldSize: [number, number] | undefined,
+  year: number | undefined
+): CameraGeneration {
+  if (!worldSize) return 'Unknown';
+  const [h, w] = worldSize;
+  if (w <= 3584 || h <= 1792) return 'Gen 1';
+  if (w >= 15000 || h >= 7500) return 'Gen 4';
+  if (w === 13312 || h === 6656) {
+    if (year !== undefined && year <= 2010) return 'Gen 2';
+    return 'Gen 3';
+  }
+  return 'Unknown';
+}
+
+/**
+ * Updates a hierarchical tag selection when toggling `toggledId`:
+ * - Checking a lower-level tag automatically selects all its higher-up ancestor tags
+ *   (marking those ancestors in `autoSelectedIds` if they weren't already explicitly selected).
+ * - Unchecking a lower-level tag automatically unselects higher-up ancestor tags
+ *   ONLY if those higher-up tags were in `autoSelectedIds` and no other selected descendant still needs them.
+ */
+export function toggleTagWithAutoAncestors(
+  toggledId: string,
+  currentSelectedIds: string[],
+  currentAutoSelectedIds: string[],
+  tree: Array<{ id: string; parentId: string | null }>
+): { selectedIds: string[]; autoSelectedIds: string[] } {
+  const nodeById = new Map<string, { id: string; parentId: string | null }>();
+  for (const n of tree) nodeById.set(n.id, n);
+
+  const getAncestors = (id: string): string[] => {
+    const ancestors: string[] = [];
+    let curr = nodeById.get(id);
+    const visited = new Set<string>();
+    while (curr && curr.parentId && !visited.has(curr.parentId)) {
+      visited.add(curr.parentId);
+      ancestors.push(curr.parentId);
+      curr = nodeById.get(curr.parentId);
+    }
+    return ancestors;
+  };
+
+  const getProperDescendants = (id: string): string[] => {
+    const desc: string[] = [];
+    const queue = [id];
+    const visited = new Set<string>([id]);
+    while (queue.length > 0) {
+      const parent = queue.shift()!;
+      for (const n of tree) {
+        if (n.parentId === parent && !visited.has(n.id)) {
+          visited.add(n.id);
+          desc.push(n.id);
+          queue.push(n.id);
+        }
+      }
+    }
+    return desc;
+  };
+
+  const selectedSet = new Set(currentSelectedIds);
+  const autoSet = new Set(currentAutoSelectedIds);
+  // Explicit selections are those in selectedSet that are NOT purely auto-selected
+  const explicitSet = new Set(
+    currentSelectedIds.filter((id) => !autoSet.has(id))
+  );
+
+  if (!selectedSet.has(toggledId)) {
+    // Selecting `toggledId` explicitly
+    explicitSet.add(toggledId);
+    autoSet.delete(toggledId);
+
+    for (const ancId of getAncestors(toggledId)) {
+      if (!explicitSet.has(ancId)) {
+        autoSet.add(ancId);
+      }
+    }
+  } else {
+    // Unselecting `toggledId`
+    explicitSet.delete(toggledId);
+    autoSet.delete(toggledId);
+
+    // If user explicitly unchecks a parent category, also uncheck any descendants that were keeping it alive
+    for (const descId of getProperDescendants(toggledId)) {
+      explicitSet.delete(descId);
+      autoSet.delete(descId);
+    }
+
+    // Recompute which auto-selected ancestors are still needed by remaining explicit selections
+    const neededAutoAncestors = new Set<string>();
+    for (const expId of explicitSet) {
+      for (const ancId of getAncestors(expId)) {
+        if (!explicitSet.has(ancId) && autoSet.has(ancId)) {
+          neededAutoAncestors.add(ancId);
+        }
+      }
+    }
+    autoSet.clear();
+    for (const id of neededAutoAncestors) autoSet.add(id);
+  }
+
+  const finalSelected = Array.from(new Set([...explicitSet, ...autoSet]));
+  const finalAuto = Array.from(autoSet);
+  return { selectedIds: finalSelected, autoSelectedIds: finalAuto };
+}
+
+/**
  * Queries Google's internal Street View SingleImageSearch RPC endpoint
- * to find the nearest official Google Street View panorama (source filter: official only)
- * and extracts its panorama ID, coordinates, official Google car driving heading,
- * capture date, and connected road sequence.
+ * to find the nearest official Google Street View panorama (strictly official launch imagery)
+ * and extracts capture year, month, season, camera generation, country, region, road name,
+ * elevation, car heading, and historical coverage years.
  */
 export async function fetchOfficialStreetViewAtLatLng(
   lat: number,
@@ -180,11 +317,12 @@ export async function fetchOfficialStreetViewAtLatLng(
 ): Promise<OfficialStreetViewMetadata | null> {
   const url =
     'https://maps.googleapis.com/$rpc/google.internal.maps.mapsjs.v1.MapsJsInternalService/SingleImageSearch';
+  // Pass official source filter [[[2, true, 2]]] in slot [2][10] so user photospheres are ignored
   const body = JSON.stringify([
     ['apiv3'],
     [[null, null, lat, lng], radiusMeters],
-    [null, ['en', 'US'], [[[[2, true, 2]]]]],
-    [[1, 2, 3, 4, 8, 6]],
+    [null, ['en', 'US'], null, null, null, null, null, null, [1], null, [[[2, true, 2]]]],
+    [[1, 2, 3, 4, 5, 6, 8]],
   ]);
 
   try {
@@ -203,28 +341,95 @@ export async function fetchOfficialStreetViewAtLatLng(
     }
 
     const meta = data[1];
+    // Strictly verify official Street View imagery (type 2 = official Google Street View)
+    if (meta?.[2]?.[0] !== 2) {
+      return null;
+    }
+
     const panoId: string | undefined = meta?.[1]?.[1];
     if (!panoId) return null;
+
+    const rawDims = meta?.[2]?.[2];
+    const worldSize: [number, number] | undefined =
+      Array.isArray(rawDims) &&
+      typeof rawDims[0] === 'number' &&
+      typeof rawDims[1] === 'number'
+        ? [rawDims[0], rawDims[1]]
+        : undefined;
 
     const locationBlock = meta?.[5]?.[0]?.[1];
     const foundLat: number = locationBlock?.[0]?.[2] ?? lat;
     const foundLng: number = locationBlock?.[0]?.[3] ?? lng;
     const elevationMeters: number | undefined = locationBlock?.[1]?.[0];
     const carHeadingDeg: number = locationBlock?.[2]?.[0] ?? 0;
+    const pitchDeg: number | undefined = locationBlock?.[2]?.[1];
+    const rollDeg: number | undefined = locationBlock?.[2]?.[2];
     const panoNorthDeg: number = data?.[2]?.[0] ?? carHeadingDeg;
     const countryCode: string | undefined = locationBlock?.[4];
 
-    const descBlock = meta?.[3]?.[2]?.[0]?.[0];
-    const description: string | undefined =
-      typeof descBlock === 'string' ? descBlock : undefined;
+    // Parse address lines from meta[3][2]
+    // Usually [["Road Name", "en"], ["Locality, Region", "en"]] or [["Locality, Region", "en"]]
+    const addrLines = meta?.[3]?.[2];
+    let description: string | undefined;
+    let roadName: string | undefined;
+    let localityName: string | undefined;
+    let regionName: string | undefined;
+
+    if (Array.isArray(addrLines) && addrLines.length > 0) {
+      const strs = addrLines
+        .map((entry: unknown) =>
+          Array.isArray(entry) && typeof entry[0] === 'string'
+            ? entry[0].trim()
+            : ''
+        )
+        .filter(Boolean);
+      description = strs.join(' — ');
+      if (strs.length >= 2) {
+        roadName = strs[0];
+      }
+      const lastLine = strs[strs.length - 1];
+      if (lastLine) {
+        const parts = lastLine.split(',').map((s: string) => s.trim());
+        if (parts.length >= 2) {
+          regionName = parts[parts.length - 1];
+          localityName = parts.slice(0, -1).join(', ');
+        } else {
+          regionName = parts[0];
+        }
+      }
+    }
+
+    const rpcCopyright: string | undefined = meta?.[4]?.[0]?.[0]?.[0]?.[0];
 
     const dateArr = meta?.[6]?.[7];
     let captureDate: string | undefined;
-    if (Array.isArray(dateArr) && dateArr.length >= 2) {
-      const y = dateArr[0];
-      const m = String(dateArr[1]).padStart(2, '0');
-      captureDate = `${y}-${m}`;
+    let year: number | undefined;
+    let month: number | undefined;
+    let season: CoverageSeason | undefined;
+    if (
+      Array.isArray(dateArr) &&
+      typeof dateArr[0] === 'number' &&
+      typeof dateArr[1] === 'number'
+    ) {
+      year = dateArr[0];
+      month = dateArr[1];
+      captureDate = `${year}-${String(month).padStart(2, '0')}`;
+      season = computeHemisphereSeason(month, foundLat);
     }
+
+    const cameraGen = inferCameraGeneration(worldSize, year);
+
+    // Extract historical coverage years from meta[5][0][8]
+    const rawHist = meta?.[5]?.[0]?.[8];
+    const histYearSet = new Set<number>();
+    if (year !== undefined) histYearSet.add(year);
+    if (Array.isArray(rawHist)) {
+      for (const h of rawHist) {
+        const hy = h?.[1]?.[0];
+        if (typeof hy === 'number') histYearSet.add(hy);
+      }
+    }
+    const historicalYears = Array.from(histYearSet).sort((a, b) => a - b);
 
     const rawTargets = meta?.[5]?.[0]?.[3]?.[0];
     const roadSequence: Array<{
@@ -291,13 +496,29 @@ export async function fetchOfficialStreetViewAtLatLng(
       lng: foundLng,
       carHeadingDeg: Math.round(carHeadingDeg * 10) / 10,
       panoNorthDeg,
+      pitchDeg:
+        typeof pitchDeg === 'number'
+          ? Math.round((pitchDeg - 90) * 10) / 10
+          : undefined,
+      rollDeg:
+        typeof rollDeg === 'number' ? Math.round(rollDeg * 10) / 10 : undefined,
       elevationMeters:
         typeof elevationMeters === 'number'
           ? Math.round(elevationMeters)
           : undefined,
       captureDate,
+      year,
+      month,
+      season,
+      cameraGen,
+      worldSize,
       description,
+      roadName,
+      localityName,
+      regionName,
       countryCode,
+      rpcCopyright,
+      historicalYears,
       neighborLinks,
       roadSequence,
     };
@@ -330,28 +551,81 @@ async function fetchOsrmGeometryForWaypoints(
 }
 
 /**
+ * Builds contiguous RoadAutoMetaSpan[] segments along a road stretch from sampled OfficialStreetViewMetadata checkpoints.
+ * Adjacent checkpoints with matching (captureDate, cameraGen, countryCode, regionName) are merged into a single span.
+ */
+function buildAutoMetaSpansFromSamples(
+  validSvs: OfficialStreetViewMetadata[]
+): RoadAutoMetaSpan[] {
+  if (validSvs.length === 0) return [];
+  const n = validSvs.length;
+  const rawSpans: RoadAutoMetaSpan[] = validSvs.map((sv, idx) => {
+    const startFrac = idx === 0 ? 0 : idx / n;
+    const endFrac = idx === n - 1 ? 1 : (idx + 1) / n;
+    return {
+      startFrac: Math.round(startFrac * 1000) / 1000,
+      endFrac: Math.round(endFrac * 1000) / 1000,
+      panoId: sv.panoId,
+      year: sv.year,
+      month: sv.month,
+      captureDate: sv.captureDate,
+      season: sv.season,
+      cameraGen: sv.cameraGen,
+      countryCode: sv.countryCode,
+      regionName: sv.regionName,
+      localityName: sv.localityName,
+      roadName: sv.roadName,
+      elevationMeters: sv.elevationMeters,
+      carHeadingDeg: sv.carHeadingDeg,
+      pitchDeg: sv.pitchDeg,
+      rollDeg: sv.rollDeg,
+      historicalYears: sv.historicalYears,
+    };
+  });
+
+  // Merge consecutive spans with identical key metadata
+  const merged: RoadAutoMetaSpan[] = [];
+  for (const span of rawSpans) {
+    const prev = merged[merged.length - 1];
+    if (
+      prev &&
+      prev.captureDate === span.captureDate &&
+      prev.cameraGen === span.cameraGen &&
+      prev.countryCode === span.countryCode &&
+      prev.regionName === span.regionName
+    ) {
+      prev.endFrac = span.endFrac;
+      if (span.historicalYears) {
+        prev.historicalYears = Array.from(
+          new Set([...(prev.historicalYears || []), ...span.historicalYears])
+        ).sort((a, b) => a - b);
+      }
+    } else {
+      merged.push({ ...span });
+    }
+  }
+  return merged;
+}
+
+/**
  * Strictly snaps a sequence of drawn or clicked [lat, lng] points ONLY to roads
- * that have official Google Street View coverage.
- * Returns null if the drawn path does not lie on official Street View coverage.
+ * that have official Google Street View coverage, and extracts per-segment auto-metadata spans.
  */
 export async function snapPathToOfficialCoveredRoad(
   rawPoints: Array<[number, number]>,
   zoom: number
 ): Promise<{
   points: Array<[number, number]>;
-  carHeadingDeg?: number;
-  captureDate?: string;
-  panoId?: string;
+  autoMetaSpans: RoadAutoMetaSpan[];
+  primaryMeta: OfficialStreetViewMetadata;
 } | null> {
   if (rawPoints.length < 2) return null;
 
-  // Snap tolerance scales with zoom level so off-coverage roads cannot be accidentally snapped
   const snapRadiusMeters = Math.max(
     90,
     Math.min(750, Math.round(140 * Math.pow(1.4, Math.max(0, 13 - zoom))))
   );
 
-  // Sample up to 9 checkpoints along the drawn stroke
   const maxCheckpoints = 9;
   const sampled: Array<[number, number]> = [];
   if (rawPoints.length <= maxCheckpoints) {
@@ -365,14 +639,12 @@ export async function snapPathToOfficialCoveredRoad(
     sampled.push(rawPoints[rawPoints.length - 1]);
   }
 
-  // Query official Google Street View coverage at each checkpoint
   const svResults = await Promise.all(
     sampled.map(([lat, lng]) =>
       fetchOfficialStreetViewAtLatLng(lat, lng, snapRadiusMeters)
     )
   );
 
-  // Keep only checkpoints that snapped to official Google Street View coverage
   const validSvs = svResults.filter(
     (sv): sv is OfficialStreetViewMetadata => sv !== null
   );
@@ -381,63 +653,58 @@ export async function snapPathToOfficialCoveredRoad(
     return null;
   }
 
-  // Build deduplicated official-coverage waypoints
+  const autoMetaSpans = buildAutoMetaSpansFromSamples(validSvs);
   const coveredWaypoints: Array<[number, number]> = [];
   for (const sv of validSvs) {
     const prev = coveredWaypoints[coveredWaypoints.length - 1];
-    if (
-      !prev ||
-      Math.hypot(sv.lat - prev[0], sv.lng - prev[1]) > 0.00005
-    ) {
+    if (!prev || Math.hypot(sv.lat - prev[0], sv.lng - prev[1]) > 0.00005) {
       coveredWaypoints.push([sv.lat, sv.lng]);
     }
   }
 
-  // If all checkpoints snapped to a single panorama on a short stroke, use its official roadSequence
   if (coveredWaypoints.length < 2) {
     const primary = validSvs[0];
     if (primary.roadSequence && primary.roadSequence.length >= 2) {
       return {
         points: primary.roadSequence.map((p) => [p.lat, p.lng]),
-        carHeadingDeg: primary.carHeadingDeg,
-        captureDate: primary.captureDate,
-        panoId: primary.panoId,
+        autoMetaSpans,
+        primaryMeta: primary,
       };
     }
     return null;
   }
 
-  // Route between the verified official-coverage panorama coordinates
   const routedPoints = await fetchOsrmGeometryForWaypoints(coveredWaypoints);
 
-  // Verify interior midpoints of the routed geometry to ensure OSRM did not shortcut via an uncovered road
   if (routedPoints.length >= 4) {
     const mid1 = routedPoints[Math.floor(routedPoints.length * 0.33)];
     const mid2 = routedPoints[Math.floor(routedPoints.length * 0.67)];
     const [check1, check2] = await Promise.all([
-      fetchOfficialStreetViewAtLatLng(mid1[0], mid1[1], Math.max(250, snapRadiusMeters)),
-      fetchOfficialStreetViewAtLatLng(mid2[0], mid2[1], Math.max(250, snapRadiusMeters)),
+      fetchOfficialStreetViewAtLatLng(
+        mid1[0],
+        mid1[1],
+        Math.max(250, snapRadiusMeters)
+      ),
+      fetchOfficialStreetViewAtLatLng(
+        mid2[0],
+        mid2[1],
+        Math.max(250, snapRadiusMeters)
+      ),
     ]);
 
-    // If OSRM detoured onto an uncovered road, fall back to connecting only the verified official SV points
     if (!check1 || !check2) {
-      if (coveredWaypoints.length >= 2) {
-        return {
-          points: coveredWaypoints,
-          carHeadingDeg: validSvs[0].carHeadingDeg,
-          captureDate: validSvs[0].captureDate,
-          panoId: validSvs[0].panoId,
-        };
-      }
-      return null;
+      return {
+        points: coveredWaypoints,
+        autoMetaSpans,
+        primaryMeta: validSvs[0],
+      };
     }
   }
 
   return {
     points: routedPoints,
-    carHeadingDeg: validSvs[0].carHeadingDeg,
-    captureDate: validSvs[0].captureDate,
-    panoId: validSvs[0].panoId,
+    autoMetaSpans,
+    primaryMeta: validSvs[0],
   };
 }
 
@@ -451,9 +718,8 @@ export async function fetchSingleClickRoadSection(
   zoom: number
 ): Promise<{
   points: Array<[number, number]>;
-  carHeadingDeg?: number;
-  captureDate?: string;
-  panoId?: string;
+  autoMetaSpans: RoadAutoMetaSpan[];
+  primaryMeta: OfficialStreetViewMetadata;
 } | null> {
   const clickRadiusMeters = Math.max(
     90,
@@ -479,33 +745,48 @@ export async function fetchSingleClickRoadSection(
   const probeBack: [number, number] = [sv.lat - dLat, sv.lng - dLng];
   const probeFwd: [number, number] = [sv.lat + dLat, sv.lng + dLng];
 
-  // Verify that the backward and forward endpoints also lie on official coverage
   const [svBack, svFwd] = await Promise.all([
-    fetchOfficialStreetViewAtLatLng(probeBack[0], probeBack[1], halfSpanMeters * 0.6),
-    fetchOfficialStreetViewAtLatLng(probeFwd[0], probeFwd[1], halfSpanMeters * 0.6),
+    fetchOfficialStreetViewAtLatLng(
+      probeBack[0],
+      probeBack[1],
+      halfSpanMeters * 0.6
+    ),
+    fetchOfficialStreetViewAtLatLng(
+      probeFwd[0],
+      probeFwd[1],
+      halfSpanMeters * 0.6
+    ),
   ]);
 
+  const validSamples: OfficialStreetViewMetadata[] = [];
   const verifiedWaypoints: Array<[number, number]> = [];
-  if (svBack) verifiedWaypoints.push([svBack.lat, svBack.lng]);
+  if (svBack) {
+    validSamples.push(svBack);
+    verifiedWaypoints.push([svBack.lat, svBack.lng]);
+  }
+  validSamples.push(sv);
   verifiedWaypoints.push([sv.lat, sv.lng]);
-  if (svFwd) verifiedWaypoints.push([svFwd.lat, svFwd.lng]);
+  if (svFwd) {
+    validSamples.push(svFwd);
+    verifiedWaypoints.push([svFwd.lat, svFwd.lng]);
+  }
+
+  const autoMetaSpans = buildAutoMetaSpansFromSamples(validSamples);
 
   if (verifiedWaypoints.length >= 2) {
     const snapped = await fetchOsrmGeometryForWaypoints(verifiedWaypoints);
     return {
       points: snapped,
-      carHeadingDeg: sv.carHeadingDeg,
-      captureDate: sv.captureDate,
-      panoId: sv.panoId,
+      autoMetaSpans,
+      primaryMeta: sv,
     };
   }
 
   if (sv.roadSequence && sv.roadSequence.length >= 2) {
     return {
       points: sv.roadSequence.map((p) => [p.lat, p.lng]),
-      carHeadingDeg: sv.carHeadingDeg,
-      captureDate: sv.captureDate,
-      panoId: sv.panoId,
+      autoMetaSpans,
+      primaryMeta: sv,
     };
   }
 

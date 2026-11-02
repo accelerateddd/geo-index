@@ -25,6 +25,7 @@ import {
   GitCommitHorizontal,
   Layers,
   MapPin,
+  Maximize2,
   MousePointer,
   Navigation,
   Pencil,
@@ -66,16 +67,36 @@ import {
   saveSideLineTags,
   saveSvCoverageStylePrefs,
   snapPathToOfficialCoveredRoad,
+  toggleTagWithAutoAncestors,
   type CoverageExportBundle,
 } from '../utils/coverageStorage';
+import {
+  collectAvailableAutoMetadata,
+  doesSpanMatchAutoMetaFilters,
+  evaluateBooleanQueryString,
+  getDescendantIdsInclusive,
+  type StructuredAutoMetaFilters,
+} from '../utils/coverageFilterEngine';
+import {
+  PinSketchCanvas,
+  StreetViewSphericalViewer,
+  buildChevronPolylines,
+  computeCompassBearing,
+  computeSideOutwardCompassBearing,
+  extractSubPolylineByFraction,
+  formatCompassDirection,
+  hexToRgbNormalized,
+  interpolatePointOnPolylineByFraction,
+  isAngleWithinCardinalFilter,
+  offsetPolylinePerpendicular,
+  projectPointOntoRoadStretch,
+  resolveSideLineFractions,
+} from './CoverageSubComponents';
 
-// Official Google Maps Non-Terrain Roadmap tiles
 const GOOGLE_ROADMAP_TILES =
   'https://mt1.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}';
-// Official Google Satellite Hybrid tiles
 const GOOGLE_HYBRID_TILES =
   'https://mt1.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}';
-// Official Google Street View Coverage overlay tiles
 const GOOGLE_OFFICIAL_SV_COVERAGE_TILES =
   'https://mts1.google.com/vt?pb=!1m4!1m3!1i{z}!2i{x}!3i{y}!2m8!1e2!2ssvv!4m2!1scc!2s*211m3*211e2*212b1*213e2*212b1*214b1!4m2!1ssvl!2s*212b1!3m8!2sen!3sus!5e1105!12m4!1e68!2m2!1sset!2sRoadmap!4e0';
 
@@ -91,821 +112,21 @@ const ANNOTATION_COLORS = [
   { id: '#1e293b', label: 'Black' },
 ];
 
-const CARDINAL_DIRECTION_TARGET_DEG: Record<
-  Exclude<CardinalDirectionFilter, 'all'>,
-  { deg: number; tolerance: number; label: string }
-> = {
-  N: { deg: 0, tolerance: 50, label: 'North of Road (N)' },
-  NE: { deg: 45, tolerance: 35, label: 'NE of Road' },
-  E: { deg: 90, tolerance: 50, label: 'East of Road (E)' },
-  SE: { deg: 135, tolerance: 35, label: 'SE of Road' },
-  S: { deg: 180, tolerance: 50, label: 'South of Road (S)' },
-  SW: { deg: 225, tolerance: 35, label: 'SW of Road' },
-  W: { deg: 270, tolerance: 50, label: 'West of Road (W)' },
-  NW: { deg: 315, tolerance: 35, label: 'NW of Road' },
-};
+const MONTH_LABELS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 
-function formatCompassDirection(deg: number): string {
-  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-  const normalized = ((deg % 360) + 360) % 360;
-  const idx = Math.round(normalized / 45) % 8;
-  return `${Math.round(normalized)}° ${dirs[idx]}`;
-}
-
-function hexToRgbNormalized(hex: string): [number, number, number] {
-  const clean = hex.replace('#', '').trim();
-  if (clean.length !== 6) return [0.22, 0.74, 0.97];
-  const r = parseInt(clean.slice(0, 2), 16) / 255;
-  const g = parseInt(clean.slice(2, 4), 16) / 255;
-  const b = parseInt(clean.slice(4, 6), 16) / 255;
-  return [
-    Number.isFinite(r) ? r : 0.22,
-    Number.isFinite(g) ? g : 0.74,
-    Number.isFinite(b) ? b : 0.97,
-  ];
-}
-
-function computeCompassBearing(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number
-): number {
-  const cosLat = Math.cos(((lat1 + lat2) * 0.5 * Math.PI) / 180);
-  const dy = lat2 - lat1;
-  const dx = (lng2 - lng1) * cosLat;
-  const angleRad = Math.atan2(dx, dy);
-  return ((angleRad * 180) / Math.PI + 360) % 360;
-}
-
-function computeSideOutwardCompassBearing(
-  pt1: [number, number],
-  pt2: [number, number],
-  side: 'left' | 'right'
-): number {
-  const roadBearing = computeCompassBearing(pt1[0], pt1[1], pt2[0], pt2[1]);
-  return side === 'left'
-    ? (roadBearing - 90 + 360) % 360
-    : (roadBearing + 90) % 360;
-}
-
-function isAngleWithinCardinalFilter(
-  bearingDeg: number,
-  filter: CardinalDirectionFilter
-): boolean {
-  if (filter === 'all') return true;
-  const spec = CARDINAL_DIRECTION_TARGET_DEG[filter];
-  const diff = Math.abs((((bearingDeg - spec.deg) % 360) + 540) % 360 - 180);
-  return diff <= spec.tolerance;
-}
-
-/**
- * Interpolates a single [lat, lng] coordinate at normalized arc-length fraction `frac` [0..1] along `points`.
- */
-function interpolatePointOnPolylineByFraction(
-  points: Array<[number, number]>,
-  frac: number
-): [number, number] {
-  if (points.length === 0) return [0, 0];
-  if (points.length === 1) return points[0];
-  const clamped = Math.max(0, Math.min(1, frac));
-
-  const segLengths: number[] = [];
-  let totalLen = 0;
-  for (let i = 0; i < points.length - 1; i++) {
-    const cosLat = Math.cos(
-      ((points[i][0] + points[i + 1][0]) * 0.5 * Math.PI) / 180
-    );
-    const len = Math.hypot(
-      points[i + 1][0] - points[i][0],
-      (points[i + 1][1] - points[i][1]) * cosLat
-    );
-    segLengths.push(len);
-    totalLen += len;
-  }
-  if (totalLen <= 1e-9) return points[0];
-
-  const targetDist = clamped * totalLen;
-  let accum = 0;
-  for (let i = 0; i < segLengths.length; i++) {
-    const segLen = segLengths[i];
-    if (accum + segLen >= targetDist && segLen > 1e-10) {
-      const t = (targetDist - accum) / segLen;
-      return [
-        points[i][0] + (points[i + 1][0] - points[i][0]) * t,
-        points[i][1] + (points[i + 1][1] - points[i][1]) * t,
-      ];
-    }
-    accum += segLen;
-  }
-  return points[points.length - 1];
-}
-
-/**
- * Resolves the effective [startFrac, endFrac] of a Side Line attachment,
- * taking into account any linked startPoiId or endPoiId on the parent road stretch.
- */
-function resolveSideLineFractions(
-  sl: RoadSideLineAttachment,
-  roadPois?: RoadPointOfInterest[]
-): [number, number] {
-  let start = sl.startFrac;
-  let end = sl.endFrac;
-  if (roadPois && roadPois.length > 0) {
-    if (sl.startPoiId) {
-      const p = roadPois.find((poi) => poi.id === sl.startPoiId);
-      if (p) start = p.frac;
-    }
-    if (sl.endPoiId) {
-      const p = roadPois.find((poi) => poi.id === sl.endPoiId);
-      if (p) end = p.frac;
-    }
-  }
-  return [Math.min(start, end), Math.max(start, end)];
-}
-
-/**
- * Extracts a sub-polyline from `points` between normalized arc-length fractions [startFrac, endFrac].
- */
-function extractSubPolylineByFraction(
-  points: Array<[number, number]>,
-  startFrac: number,
-  endFrac: number
-): Array<[number, number]> {
-  if (points.length < 2) return points;
-  const f0 = Math.max(0, Math.min(1, Math.min(startFrac, endFrac)));
-  const f1 = Math.max(0, Math.min(1, Math.max(startFrac, endFrac)));
-  if (f1 - f0 < 0.001) return [];
-
-  const segLengths: number[] = [];
-  let totalLen = 0;
-  for (let i = 0; i < points.length - 1; i++) {
-    const cosLat = Math.cos(
-      ((points[i][0] + points[i + 1][0]) * 0.5 * Math.PI) / 180
-    );
-    const dLat = points[i + 1][0] - points[i][0];
-    const dLng = (points[i + 1][1] - points[i][1]) * cosLat;
-    const len = Math.hypot(dLat, dLng);
-    segLengths.push(len);
-    totalLen += len;
-  }
-
-  if (totalLen <= 1e-9) return points;
-
-  const targetStart = f0 * totalLen;
-  const targetEnd = f1 * totalLen;
-  const out: Array<[number, number]> = [];
-
-  let accum = 0;
-  for (let i = 0; i < segLengths.length; i++) {
-    const segLen = segLengths[i];
-    const nextAccum = accum + segLen;
-    const pA = points[i];
-    const pB = points[i + 1];
-
-    if (nextAccum >= targetStart && accum <= targetEnd && segLen > 1e-10) {
-      const tStart = Math.max(0, (targetStart - accum) / segLen);
-      const tEnd = Math.min(1, (targetEnd - accum) / segLen);
-
-      const startPt: [number, number] = [
-        pA[0] + (pB[0] - pA[0]) * tStart,
-        pA[1] + (pB[1] - pA[1]) * tStart,
-      ];
-      const endPt: [number, number] = [
-        pA[0] + (pB[0] - pA[0]) * tEnd,
-        pA[1] + (pB[1] - pA[1]) * tEnd,
-      ];
-
-      if (out.length === 0) {
-        out.push(startPt);
-      }
-      out.push(endPt);
-    }
-    accum = nextAccum;
-  }
-
-  return out;
-}
-
-/**
- * Offsets a polyline perpendicular to its path by `offsetPixels` at the given map zoom level.
- */
-function offsetPolylinePerpendicular(
-  points: Array<[number, number]>,
-  side: 'left' | 'right',
-  offsetPixels: number,
-  zoom: number
-): Array<[number, number]> {
-  if (points.length < 2) return points;
-  const degPerPixelLng = 360 / (256 * Math.pow(2, zoom));
-  const sign = side === 'left' ? -1 : 1;
-
-  return points.map((pt, i) => {
-    const prev = points[Math.max(0, i - 1)];
-    const next = points[Math.min(points.length - 1, i + 1)];
-    const cosLat = Math.max(0.15, Math.cos((pt[0] * Math.PI) / 180));
-    const dy = (next[0] - prev[0]) / cosLat;
-    const dx = next[1] - prev[1];
-    const len = Math.hypot(dx, dy);
-    if (len < 1e-10) return pt;
-
-    const nxEast = (dy / len) * sign;
-    const nyNorth = (-dx / len) * sign;
-
-    const dLat = nyNorth * offsetPixels * degPerPixelLng * cosLat;
-    const dLng = nxEast * offsetPixels * degPerPixelLng;
-    return [pt[0] + dLat, pt[1] + dLng];
-  });
-}
-
-/**
- * Builds geographic chevron polylines (`[leftWing, tip, rightWing]`) along a polyline.
- */
-function buildChevronPolylines(
-  points: Array<[number, number]>,
-  direction: DrivingDirectionMode,
-  zoom: number
-): Array<Array<[number, number]>> {
-  if (points.length < 2 || direction === 'none') return [];
-  const degPerPixel = 360 / (256 * Math.pow(2, zoom));
-  const spacingDeg = degPerPixel * 85;
-  const wingLenDeg = degPerPixel * 7.5;
-
-  const chevrons: Array<Array<[number, number]>> = [];
-  let distSinceLast = spacingDeg * 0.45;
-
-  const addChevronAt = (
-    lat: number,
-    lng: number,
-    dLat: number,
-    dLng: number,
-    reverse: boolean
-  ) => {
-    const cosLat = Math.max(0.15, Math.cos((lat * Math.PI) / 180));
-    const ux = (reverse ? -dLng : dLng) * cosLat;
-    const uy = reverse ? -dLat : dLat;
-    const len = Math.hypot(ux, uy);
-    if (len < 1e-10) return;
-
-    const fx = ux / len;
-    const fy = uy / len;
-    const px = -fy;
-    const py = fx;
-
-    const backX = -fx * wingLenDeg;
-    const backY = -fy * wingLenDeg;
-    const sideX = px * wingLenDeg * 0.68;
-    const sideY = py * wingLenDeg * 0.68;
-
-    const tip: [number, number] = [
-      lat + fy * wingLenDeg * 0.35 * cosLat,
-      lng + (fx * wingLenDeg * 0.35) / cosLat,
-    ];
-    const leftWing: [number, number] = [
-      tip[0] + (backY + sideY) * cosLat,
-      tip[1] + (backX + sideX) / cosLat,
-    ];
-    const rightWing: [number, number] = [
-      tip[0] + (backY - sideY) * cosLat,
-      tip[1] + (backX - sideX) / cosLat,
-    ];
-    chevrons.push([leftWing, tip, rightWing]);
-  };
-
-  for (let i = 0; i < points.length - 1; i++) {
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const cosLat = Math.max(
-      0.15,
-      Math.cos(((p1[0] + p2[0]) * 0.5 * Math.PI) / 180)
-    );
-    const dLat = p2[0] - p1[0];
-    const dLng = p2[1] - p1[1];
-    const segLen = Math.hypot(dLat / cosLat, dLng);
-    if (segLen < 1e-9) continue;
-
-    let pos = spacingDeg - distSinceLast;
-    while (pos <= segLen) {
-      const t = pos / segLen;
-      const lat = p1[0] + dLat * t;
-      const lng = p1[1] + dLng * t;
-
-      if (direction === 'forward' || direction === 'both') {
-        addChevronAt(lat, lng, dLat / cosLat, dLng, false);
-      }
-      if (direction === 'reverse' || direction === 'both') {
-        addChevronAt(lat, lng, dLat / cosLat, dLng, true);
-      }
-      pos += spacingDeg;
-    }
-    distSinceLast = segLen - (pos - spacingDeg);
-  }
-
-  if (chevrons.length === 0 && points.length >= 2) {
-    const midIdx = Math.floor((points.length - 1) / 2);
-    const p1 = points[midIdx];
-    const p2 = points[midIdx + 1];
-    const cosLat = Math.max(
-      0.15,
-      Math.cos(((p1[0] + p2[0]) * 0.5 * Math.PI) / 180)
-    );
-    const midLat = (p1[0] + p2[0]) * 0.5;
-    const midLng = (p1[1] + p2[1]) * 0.5;
-    if (direction === 'forward' || direction === 'both') {
-      addChevronAt(midLat, midLng, (p2[0] - p1[0]) / cosLat, p2[1] - p1[1], false);
-    }
-    if (direction === 'reverse' || direction === 'both') {
-      addChevronAt(midLat, midLng, (p2[0] - p1[0]) / cosLat, p2[1] - p1[1], true);
-    }
-  }
-
-  return chevrons;
-}
-
-/**
- * Projects a clicked point `[lat, lng]` onto a polyline `points`, returning:
- * - `frac`: normalized arc-length [0..1] along the polyline
- * - `snappedPos`: exact [lat, lng] on the polyline
- * - `side`: 'left' | 'right' relative to the forward polyline tangent
- * - `distanceDeg`: approximate distance in degrees
- */
-function projectPointOntoRoadStretch(
-  lat: number,
-  lng: number,
-  points: Array<[number, number]>
-): {
-  frac: number;
-  snappedPos: [number, number];
-  side: 'left' | 'right';
-  distanceDeg: number;
-} {
-  if (points.length < 2) {
-    return {
-      frac: 0,
-      snappedPos: points[0] || [lat, lng],
-      side: 'left',
-      distanceDeg: Infinity,
-    };
-  }
-
-  const segLengths: number[] = [];
-  let totalLen = 0;
-  for (let i = 0; i < points.length - 1; i++) {
-    const cosLat = Math.cos(
-      ((points[i][0] + points[i + 1][0]) * 0.5 * Math.PI) / 180
-    );
-    const len = Math.hypot(
-      points[i + 1][0] - points[i][0],
-      (points[i + 1][1] - points[i][1]) * cosLat
-    );
-    segLengths.push(len);
-    totalLen += len;
-  }
-  if (totalLen <= 1e-9) {
-    return {
-      frac: 0,
-      snappedPos: points[0],
-      side: 'left',
-      distanceDeg: Infinity,
-    };
-  }
-
-  let bestDist = Infinity;
-  let bestFrac = 0;
-  let bestSnapped: [number, number] = points[0];
-  let bestSide: 'left' | 'right' = 'left';
-  let accum = 0;
-
-  for (let i = 0; i < points.length - 1; i++) {
-    const A = points[i];
-    const B = points[i + 1];
-    const cosLat = Math.cos(((A[0] + B[0]) * 0.5 * Math.PI) / 180);
-    const vx = (B[1] - A[1]) * cosLat;
-    const vy = B[0] - A[0];
-    const wx = (lng - A[1]) * cosLat;
-    const wy = lat - A[0];
-
-    const segLenSq = vx * vx + vy * vy;
-    const t =
-      segLenSq > 1e-12
-        ? Math.max(0, Math.min(1, (wx * vx + wy * vy) / segLenSq))
-        : 0;
-
-    const projX = vx * t;
-    const projY = vy * t;
-    const dist = Math.hypot(wx - projX, wy - projY);
-
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestFrac = (accum + segLengths[i] * t) / totalLen;
-      bestSnapped = [
-        A[0] + (B[0] - A[0]) * t,
-        A[1] + (B[1] - A[1]) * t,
-      ];
-      const cross = vx * wy - vy * wx;
-      bestSide = cross >= 0 ? 'left' : 'right';
-    }
-    accum += segLengths[i];
-  }
-
-  return {
-    frac: bestFrac,
-    snappedPos: bestSnapped,
-    side: bestSide,
-    distanceDeg: bestDist,
-  };
-}
-
-function getTagAndDescendantIds(
-  rootTagId: string,
-  tree: CoverageTagNode[]
-): Set<string> {
-  const result = new Set<string>([rootTagId]);
-  let added = true;
-  while (added) {
-    added = false;
-    for (const node of tree) {
-      if (node.parentId && result.has(node.parentId) && !result.has(node.id)) {
-        result.add(node.id);
-        added = true;
-      }
-    }
-  }
-  return result;
-}
-
-/**
- * Interactive 360° Spherical Panorama Viewer using Google's Official Panorama Tiles.
- * Synchronizes `viewHeadingDeg` and `viewPitchDeg` in real time so the map's headlight cone
- * points in the exact direction the user is currently looking.
- */
-const StreetViewSphericalViewer: React.FC<{
-  panoId: string;
-  carHeadingDeg: number;
-  panoNorthDeg: number;
-  viewHeadingDeg: number;
-  viewPitchDeg: number;
-  neighborLinks: OfficialStreetViewMetadata['neighborLinks'];
-  onChangeViewAngle: (headingDeg: number, pitchDeg: number) => void;
-  onNavigateNeighbor: (neighbor: {
-    panoId: string;
-    headingDeg: number;
-    lat?: number;
-    lng?: number;
-  }) => void;
-}> = ({
-  panoId,
-  panoNorthDeg,
-  viewHeadingDeg,
-  viewPitchDeg,
-  neighborLinks,
-  onChangeViewAngle,
-  onNavigateNeighbor,
-}) => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [fovDeg, setFovDeg] = useState<number>(75);
-  const [tilesLoaded, setTilesLoaded] = useState<number>(0);
-  const isDraggingRef = useRef<boolean>(false);
-  const dragStartRef = useRef<{
-    x: number;
-    y: number;
-    heading: number;
-    pitch: number;
-  }>({ x: 0, y: 0, heading: 0, pitch: 0 });
-  const panoCanvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setTilesLoaded(0);
-
-    const offscreen = document.createElement('canvas');
-    offscreen.width = 1664;
-    offscreen.height = 832;
-    const ctx = offscreen.getContext('2d');
-    panoCanvasRef.current = offscreen;
-
-    if (!ctx) return;
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(0, 0, offscreen.width, offscreen.height);
-
-    let loadedCount = 0;
-    for (let y = 0; y < 2; y++) {
-      for (let x = 0; x < 4; x++) {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          if (cancelled) return;
-          ctx.drawImage(img, x * 512, y * 512);
-          loadedCount++;
-          setTilesLoaded(loadedCount);
-        };
-        img.src = `https://streetviewpixels-pa.googleapis.com/v1/tile?cb_client=maps_sv.tactile&panoid=${encodeURIComponent(
-          panoId
-        )}&x=${x}&y=${y}&zoom=2&nbt=1&fover=2`;
-      }
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [panoId]);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const srcCanvas = panoCanvasRef.current;
-    if (!canvas || !srcCanvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const width = Math.max(240, Math.min(640, Math.floor(rect.width * 0.85)));
-    const height = Math.max(180, Math.min(480, Math.floor(rect.height * 0.85)));
-    if (canvas.width !== width || canvas.height !== height) {
-      canvas.width = width;
-      canvas.height = height;
-    }
-
-    const ctx = canvas.getContext('2d');
-    const srcCtx = srcCanvas.getContext('2d');
-    if (!ctx || !srcCtx) return;
-
-    const srcW = srcCanvas.width;
-    const srcH = srcCanvas.height;
-    let srcData: ImageData;
-    try {
-      srcData = srcCtx.getImageData(0, 0, srcW, srcH);
-    } catch {
-      return;
-    }
-
-    const dstData = ctx.createImageData(width, height);
-    const srcPixels = new Uint32Array(srcData.data.buffer);
-    const dstPixels = new Uint32Array(dstData.data.buffer);
-
-    const fovRad = (fovDeg * Math.PI) / 180;
-    const focal = (width * 0.5) / Math.tan(fovRad * 0.5);
-
-    const yawDeg = viewHeadingDeg - panoNorthDeg;
-    const yawRad = (yawDeg * Math.PI) / 180;
-    const pitchRad = (viewPitchDeg * Math.PI) / 180;
-
-    const cosYaw = Math.cos(yawRad);
-    const sinYaw = Math.sin(yawRad);
-    const cosPitch = Math.cos(pitchRad);
-    const sinPitch = Math.sin(pitchRad);
-
-    const halfW = width * 0.5;
-    const halfH = height * 0.5;
-    const invTwoPi = 1 / (2 * Math.PI);
-    const invPi = 1 / Math.PI;
-
-    let dstIdx = 0;
-    for (let py = 0; py < height; py++) {
-      const cy = halfH - py;
-      for (let px = 0; px < width; px++) {
-        const cx = px - halfW;
-        const cz = focal;
-
-        const invLen = 1 / Math.hypot(cx, cy, cz);
-        const rx = cx * invLen;
-        const ry = cy * invLen;
-        const rz = cz * invLen;
-
-        const y1 = ry * cosPitch + rz * sinPitch;
-        const z1 = -ry * sinPitch + rz * cosPitch;
-        const x1 = rx;
-
-        const wx = x1 * cosYaw + z1 * sinYaw;
-        const wz = -x1 * sinYaw + z1 * cosYaw;
-        const wy = y1;
-
-        const lon = Math.atan2(wx, wz);
-        const lat = Math.asin(Math.max(-1, Math.min(1, wy)));
-
-        let u = 0.5 + lon * invTwoPi;
-        u = u - Math.floor(u);
-        const v = Math.max(0, Math.min(0.999, 0.5 - lat * invPi));
-
-        const sx = (u * (srcW - 1)) | 0;
-        const sy = (v * (srcH - 1)) | 0;
-        dstPixels[dstIdx++] = srcPixels[sy * srcW + sx];
-      }
-    }
-
-    ctx.putImageData(dstData, 0, 0);
-  }, [panoId, panoNorthDeg, viewHeadingDeg, viewPitchDeg, fovDeg, tilesLoaded]);
-
-  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    isDraggingRef.current = true;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    dragStartRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-      heading: viewHeadingDeg,
-      pitch: viewPitchDeg,
-    };
-  };
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDraggingRef.current) return;
-    const dx = e.clientX - dragStartRef.current.x;
-    const dy = e.clientY - dragStartRef.current.y;
-    const sensitivity = fovDeg / 320;
-    const nextHeading =
-      (((dragStartRef.current.heading - dx * sensitivity) % 360) + 360) % 360;
-    const nextPitch = Math.max(
-      -85,
-      Math.min(85, dragStartRef.current.pitch + dy * sensitivity)
-    );
-    onChangeViewAngle(nextHeading, nextPitch);
-  };
-
-  const handlePointerUp = () => {
-    isDraggingRef.current = false;
-  };
-
-  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
-    setFovDeg((prev) =>
-      Math.max(22, Math.min(105, prev + (e.deltaY > 0 ? 7 : -7)))
-    );
-  };
-
-  return (
-    <div className="relative w-full h-full bg-slate-950 select-none overflow-hidden">
-      <canvas
-        ref={canvasRef}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onWheel={handleWheel}
-        className="w-full h-full cursor-grab active:cursor-grabbing block"
-      />
-
-      {/* Live Compass Heading at Top of Panorama */}
-      <div className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-slate-950/85 border border-slate-700 text-[11px] font-bold text-amber-300 shadow pointer-events-none flex items-center gap-2">
-        <Compass className="w-3.5 h-3.5 text-amber-400" />
-        <span>Looking: {formatCompassDirection(viewHeadingDeg)}</span>
-      </div>
-
-      {/* Step Forward / Backward Road Arrows at Bottom of Panorama */}
-      {neighborLinks.length > 0 && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-slate-950/85 px-2.5 py-1.5 rounded-full border border-slate-700 shadow-lg">
-          {neighborLinks.map((n, idx) => {
-            const relAngle =
-              (((n.headingDeg - viewHeadingDeg) % 360) + 360) % 360;
-            return (
-              <button
-                key={`${n.panoId}-${idx}`}
-                type="button"
-                onClick={() => onNavigateNeighbor(n)}
-                title={`Step along road (${formatCompassDirection(n.headingDeg)})`}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 hover:bg-indigo-600 text-[10px] font-bold text-slate-200 hover:text-white border border-slate-700 cursor-pointer transition"
-              >
-                <span
-                  className="inline-block"
-                  style={{ transform: `rotate(${relAngle}deg)` }}
-                >
-                  ↑
-                </span>
-                <span>{formatCompassDirection(n.headingDeg)}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-};
-
-/**
- * Interactive Mini Sketch Canvas for Pin Annotations
- */
-const PinSketchCanvas: React.FC<{
-  value?: string;
-  onChange: (dataUrl: string | undefined) => void;
-}> = ({ value, onChange }) => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const isDrawingRef = useRef(false);
-  const [brushColor, setBrushColor] = useState('#f8fafc');
-  const [brushSize, setBrushSize] = useState(3);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (value) {
-      const img = new Image();
-      img.onload = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0);
-      };
-      img.src = value;
-    }
-  }, [value]);
-
-  const getCoords = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current!;
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: ((e.clientX - rect.left) / rect.width) * canvas.width,
-      y: ((e.clientY - rect.top) / rect.height) * canvas.height,
-    };
-  };
-
-  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    canvas.setPointerCapture(e.pointerId);
-    isDrawingRef.current = true;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const { x, y } = getCoords(e);
-    ctx.strokeStyle = brushColor;
-    ctx.lineWidth = brushSize;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-  };
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawingRef.current) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const { x, y } = getCoords(e);
-    ctx.lineTo(x, y);
-    ctx.stroke();
-  };
-
-  const handlePointerUp = () => {
-    if (!isDrawingRef.current) return;
-    isDrawingRef.current = false;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    onChange(canvas.toDataURL('image/png'));
-  };
-
-  const clearSketch = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-    onChange(undefined);
-  };
-
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between text-[11px] text-slate-400">
-        <span className="font-bold text-slate-300">SKETCH CANVAS</span>
-        <div className="flex items-center gap-1">
-          {['#f8fafc', '#ef4444', '#eab308', '#38bdf8', '#22c55e'].map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setBrushColor(c)}
-              className={`w-3.5 h-3.5 rounded-full border cursor-pointer ${
-                brushColor === c ? 'border-white scale-110' : 'border-slate-700'
-              }`}
-              style={{ backgroundColor: c }}
-            />
-          ))}
-          <select
-            value={brushSize}
-            onChange={(e) => setBrushSize(Number(e.target.value))}
-            className="ml-1 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-[10px] text-slate-300"
-          >
-            <option value={2}>Thin</option>
-            <option value={3}>Med</option>
-            <option value={5}>Thick</option>
-          </select>
-          <button
-            type="button"
-            onClick={clearSketch}
-            className="ml-1 px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] cursor-pointer"
-          >
-            Clear
-          </button>
-        </div>
-      </div>
-      <canvas
-        ref={canvasRef}
-        width={220}
-        height={130}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        className="w-full h-[130px] rounded-lg bg-slate-950 border border-slate-800 cursor-crosshair touch-none"
-      />
-    </div>
-  );
-};
-
-/**
- * Map interaction & zoom tracker component.
- */
 const MapInteractionController: React.FC<{
   activeTool: CoverageToolId;
   roadSnapSubMode: RoadSnapSubMode;
@@ -1031,7 +252,7 @@ export const CoverageNotesTab: React.FC = () => {
   const [undoStack, setUndoStack] = useState<CoverageAnnotation[][]>([]);
   const [redoStack, setRedoStack] = useState<CoverageAnnotation[][]>([]);
 
-  // User-created Tag Tree & Side Line Tags
+  // Hierarchical Tag Tree & Hierarchical Side Line Tag Tree
   const [tagTree, setTagTree] = useState<CoverageTagNode[]>(() =>
     loadCoverageTagTree()
   );
@@ -1049,7 +270,7 @@ export const CoverageNotesTab: React.FC = () => {
     }
   }, [sideLineTags, activeSideLineTagId]);
 
-  // Customizable Official SV Coverage Style
+  // Customizable Official SV Coverage Style + Side Line Min Zoom
   const initialSvPrefs = useMemo(() => loadSvCoverageStylePrefs(), []);
   const [baseLayer, setBaseLayer] = useState<'roadmap' | 'hybrid' | 'osm'>(
     'roadmap'
@@ -1061,6 +282,9 @@ export const CoverageNotesTab: React.FC = () => {
     initialSvPrefs.opacity
   );
   const [svLineColor, setSvLineColor] = useState<string>(initialSvPrefs.color);
+  const [sideLineMinZoom, setSideLineMinZoom] = useState<number>(
+    initialSvPrefs.sideLineMinZoom
+  );
   const [hideAllAnnotations, setHideAllAnnotations] = useState<boolean>(false);
 
   useEffect(() => {
@@ -1068,11 +292,12 @@ export const CoverageNotesTab: React.FC = () => {
       color: svLineColor,
       opacity: coverageOpacity,
       visible: showOfficialCoverage,
+      sideLineMinZoom,
     });
-  }, [svLineColor, coverageOpacity, showOfficialCoverage]);
+  }, [svLineColor, coverageOpacity, showOfficialCoverage, sideLineMinZoom]);
 
-  // Active Tool & Road Stretch Snapping States
-  const [activeTool, setActiveTool] = useState<CoverageToolId>('inspect');
+  // Default tool is 'select' (Select / Edit), placed first and slightly highlighted
+  const [activeTool, setActiveTool] = useState<CoverageToolId>('select');
   const [roadSnapSubMode, setRoadSnapSubMode] =
     useState<RoadSnapSubMode>('freedraw-snap');
   const [activeColor, setActiveColor] = useState<string>('#2563eb');
@@ -1093,7 +318,7 @@ export const CoverageNotesTab: React.FC = () => {
     string | null
   >(null);
 
-  // Split-Screen Street View Panorama States
+  // Split-Screen Street View Panorama States & Panel Size
   const [svMeta, setSvMeta] = useState<OfficialStreetViewMetadata | null>(null);
   const [svViewHeading, setSvViewHeading] = useState<number>(0);
   const [svViewPitch, setSvViewPitch] = useState<number>(0);
@@ -1102,25 +327,45 @@ export const CoverageNotesTab: React.FC = () => {
   const [showStreetViewPanel, setShowStreetViewPanel] =
     useState<boolean>(false);
   const [useIframeFallback, setUseIframeFallback] = useState<boolean>(false);
+  const [sidebarSize, setSidebarSize] = useState<'compact' | 'standard' | 'wide'>(
+    'standard'
+  );
 
-  // Dedicated Right-Sidebar Tags & Filters Panel State
+  // Tags & Filters Panel + Boolean Expression + Auto-Meta Filters
   const [showTagManagerPanel, setShowTagManagerPanel] =
     useState<boolean>(false);
+  const [booleanQuery, setBooleanQuery] = useState<string>('');
   const [selectedFilterTagIds, setSelectedFilterTagIds] = useState<string[]>(
     []
   );
+  const [autoSelectedFilterTagIds, setAutoSelectedFilterTagIds] = useState<
+    string[]
+  >([]);
+  const [filterCombinationMode, setFilterCombinationMode] = useState<
+    'AND' | 'OR'
+  >('AND');
+
+  // Auto-Metadata & Side-Line Cardinal Filters
+  const [filterYear, setFilterYear] = useState<string>('all');
+  const [filterMonth, setFilterMonth] = useState<string>('all');
+  const [filterSeason, setFilterSeason] = useState<string>('all');
+  const [filterCameraGen, setFilterCameraGen] = useState<string>('all');
+  const [filterCountry, setFilterCountry] = useState<string>('all');
+  const [filterRegion, setFilterRegion] = useState<string>('all');
   const [selectedFilterSideLineTagId, setSelectedFilterSideLineTagId] =
     useState<string>('all');
   const [cardinalDirectionFilter, setCardinalDirectionFilter] =
     useState<CardinalDirectionFilter>('all');
 
-  // Tag Creation Inputs
+  // Tag Creation Inputs (Road Tag Tree)
   const [newTagName, setNewTagName] = useState<string>('');
   const [newTagParentId, setNewTagParentId] = useState<string>('');
   const [newTagColor, setNewTagColor] = useState<string>('#38bdf8');
 
-  // Side Line Tag Creation Inputs
+  // Side Line Tag Creation Inputs (Side Line Tag Tree)
   const [newSideLineTagName, setNewSideLineTagName] = useState<string>('');
+  const [newSideLineTagParentId, setNewSideLineTagParentId] =
+    useState<string>('');
   const [newSideLineTagColor, setNewSideLineTagColor] =
     useState<string>('#ef4444');
 
@@ -1224,9 +469,14 @@ export const CoverageNotesTab: React.FC = () => {
       viewHeadingDeg: svViewHeading,
       viewPitchDeg: svViewPitch,
       captureDate: svMeta.captureDate,
+      cameraGen: svMeta.cameraGen,
+      countryCode: svMeta.countryCode,
+      regionName: svMeta.regionName,
+      elevationMeters: svMeta.elevationMeters,
       label: '',
       notes: '',
       tagIds: [],
+      autoSelectedTagIds: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -1260,13 +510,16 @@ export const CoverageNotesTab: React.FC = () => {
   };
 
   /**
-   * Snaps a Road Stretch strictly to roads with official Google Street View coverage.
+   * Snaps a Road Stretch strictly to roads with official Google Street View coverage
+   * and attaches per-segment `autoMetaSpans` (year, month, season, cameraGen, country, region).
    */
   const createSnappedRoadStretch = async (
     rawPoints: Array<[number, number]>
   ) => {
     if (rawPoints.length < 2) return;
-    setSnapStatusMsg('Verifying official Street View coverage & snapping road...');
+    setSnapStatusMsg(
+      'Verifying official Street View coverage & extracting metadata...'
+    );
     const result = await snapPathToOfficialCoveredRoad(rawPoints, mapZoom);
 
     if (!result || result.points.length < 2) {
@@ -1279,11 +532,12 @@ export const CoverageNotesTab: React.FC = () => {
     }
 
     const snappedPoints = result.points;
+    const primary = result.primaryMeta;
     let directionToUse: DrivingDirectionMode = activeDirection;
 
     if (
       autoDetectCarDir &&
-      result.carHeadingDeg !== undefined &&
+      primary.carHeadingDeg !== undefined &&
       snappedPoints.length >= 2
     ) {
       const startPt = snappedPoints[0];
@@ -1295,7 +549,7 @@ export const CoverageNotesTab: React.FC = () => {
         endPt[1]
       );
       const angleDiff = Math.abs(
-        (((result.carHeadingDeg - drawnBearing) % 360) + 540) % 360 - 180
+        (((primary.carHeadingDeg - drawnBearing) % 360) + 540) % 360 - 180
       );
       directionToUse = angleDiff <= 90 ? 'forward' : 'reverse';
     }
@@ -1313,11 +567,17 @@ export const CoverageNotesTab: React.FC = () => {
       label: '',
       notes: '',
       tagIds: [],
+      autoSelectedTagIds: [],
       roadPois: [],
       sideLines: [],
-      carHeadingDeg: result.carHeadingDeg,
-      captureDate: result.captureDate,
-      panoId: result.panoId,
+      autoMetaSpans: result.autoMetaSpans,
+      panoId: primary.panoId,
+      carHeadingDeg: primary.carHeadingDeg,
+      captureDate: primary.captureDate,
+      cameraGen: primary.cameraGen,
+      countryCode: primary.countryCode,
+      regionName: primary.regionName,
+      elevationMeters: primary.elevationMeters,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -1327,9 +587,6 @@ export const CoverageNotesTab: React.FC = () => {
     setDraftPoints([]);
   };
 
-  /**
-   * Places a Point of Interest (POI) on the nearest Marked Road Stretch.
-   */
   const addPointOfInterestOnRoadStretch = (lat: number, lng: number) => {
     const roadStretches = annotations.filter(
       (a) => a.type === 'road-stretch' && a.points && a.points.length >= 2
@@ -1375,16 +632,13 @@ export const CoverageNotesTab: React.FC = () => {
     setSelectedAnnotationId(bestStretch.id);
   };
 
-  /**
-   * Attaches a Side Line along the nearest Marked Road Stretch, automatically snapping
-   * to nearby Road POIs (or bounding between two Road POIs on single-click) when applicable.
-   */
   const attachSideLineFromStroke = (strokePts: Array<[number, number]>) => {
     let tagId = activeSideLineTagId;
     if (!tagId) {
       const defaultTag: SideLineTagDefinition = {
         id: `slt-${Date.now()}`,
         name: newSideLineTagName.trim() || 'Side Line 1',
+        parentId: null,
         color: newSideLineTagColor,
       };
       const nextTags = [...sideLineTags, defaultTag];
@@ -1443,7 +697,6 @@ export const CoverageNotesTab: React.FC = () => {
     let endPoiId: string | undefined;
 
     if (isSingleClick) {
-      // If single-clicked on a road stretch that has POIs, bound between the surrounding POIs (or start/end of road)
       if (sortedPois.length > 0) {
         const clickF = projStart.frac;
         const prevPoi = [...sortedPois].reverse().find((p) => p.frac <= clickF);
@@ -1451,18 +704,11 @@ export const CoverageNotesTab: React.FC = () => {
         if (prevPoi) {
           startFrac = prevPoi.frac;
           startPoiId = prevPoi.id;
-        } else {
-          startFrac = 0;
         }
         if (nextPoi) {
           endFrac = nextPoi.frac;
           endPoiId = nextPoi.id;
-        } else {
-          endFrac = 1;
         }
-      } else {
-        startFrac = 0;
-        endFrac = 1;
       }
     } else {
       const rawStart = Math.max(0, Math.min(projStart.frac, projEnd.frac));
@@ -1470,7 +716,6 @@ export const CoverageNotesTab: React.FC = () => {
       startFrac = rawStart;
       endFrac = rawEnd;
 
-      // Snap start/end to nearby Road POIs if within 4% arc-length
       const nearStartPoi = sortedPois.find(
         (p) => Math.abs(p.frac - rawStart) <= 0.04
       );
@@ -1536,6 +781,7 @@ export const CoverageNotesTab: React.FC = () => {
         label: '',
         notes: '',
         tagIds: [],
+        autoSelectedTagIds: [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
@@ -1582,6 +828,7 @@ export const CoverageNotesTab: React.FC = () => {
           return;
         }
         setSnapStatusMsg(null);
+        const primary = section.primaryMeta;
         const newStretch: CoverageAnnotation = {
           id: `rs-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           notebookId: activeNotebookId,
@@ -1590,12 +837,18 @@ export const CoverageNotesTab: React.FC = () => {
           color: activeColor,
           strokeWidth: activeStrokeWidth,
           direction: activeDirection,
-          carHeadingDeg: section.carHeadingDeg,
-          captureDate: section.captureDate,
-          panoId: section.panoId,
+          autoMetaSpans: section.autoMetaSpans,
+          panoId: primary.panoId,
+          carHeadingDeg: primary.carHeadingDeg,
+          captureDate: primary.captureDate,
+          cameraGen: primary.cameraGen,
+          countryCode: primary.countryCode,
+          regionName: primary.regionName,
+          elevationMeters: primary.elevationMeters,
           label: '',
           notes: '',
           tagIds: [],
+          autoSelectedTagIds: [],
           roadPois: [],
           sideLines: [],
           createdAt: Date.now(),
@@ -1622,6 +875,7 @@ export const CoverageNotesTab: React.FC = () => {
         label: 'Label',
         notes: '',
         tagIds: [],
+        autoSelectedTagIds: [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
@@ -1640,6 +894,7 @@ export const CoverageNotesTab: React.FC = () => {
         label: '',
         notes: '',
         tagIds: [],
+        autoSelectedTagIds: [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
@@ -1696,15 +951,10 @@ export const CoverageNotesTab: React.FC = () => {
     closeTemporaryStreetView,
   ]);
 
-  const expandedFilterTagIds = useMemo(() => {
-    const set = new Set<string>();
-    for (const id of selectedFilterTagIds) {
-      for (const desc of getTagAndDescendantIds(id, tagTree)) {
-        set.add(desc);
-      }
-    }
-    return set;
-  }, [selectedFilterTagIds, tagTree]);
+  const availableAutoMeta = useMemo(
+    () => collectAvailableAutoMetadata(annotations),
+    [annotations]
+  );
 
   const sideLineTagById = useMemo(() => {
     const map = new Map<string, SideLineTagDefinition>();
@@ -1712,21 +962,174 @@ export const CoverageNotesTab: React.FC = () => {
     return map;
   }, [sideLineTags]);
 
-  const filteredAnnotationsWithMatchingSideSegments = useMemo(() => {
-    const hasTagFilter = expandedFilterTagIds.size > 0;
+  const formatSideLineHierarchicalLabel = useCallback(
+    (tag: SideLineTagDefinition): string => {
+      const parts = [tag.name];
+      let curr = tag;
+      const visited = new Set<string>([tag.id]);
+      while (curr.parentId && !visited.has(curr.parentId)) {
+        visited.add(curr.parentId);
+        const parent = sideLineTagById.get(curr.parentId);
+        if (!parent) break;
+        parts.unshift(parent.name);
+        curr = parent;
+      }
+      return parts.join(' › ');
+    },
+    [sideLineTagById]
+  );
+
+  // Explicit filter tags (ignoring auto-selected parent tags when checking AND combinations)
+  const explicitFilterTagIds = useMemo(() => {
+    const autoSet = new Set(autoSelectedFilterTagIds);
+    return selectedFilterTagIds.filter((id) => !autoSet.has(id));
+  }, [selectedFilterTagIds, autoSelectedFilterTagIds]);
+
+  const structuredAutoFilters: StructuredAutoMetaFilters = useMemo(
+    () => ({
+      year: filterYear,
+      month: filterMonth,
+      season: filterSeason,
+      cameraGen: filterCameraGen,
+      country: filterCountry,
+      region: filterRegion,
+      sideLineTagId: selectedFilterSideLineTagId,
+      cardinalDirection: cardinalDirectionFilter,
+    }),
+    [
+      filterYear,
+      filterMonth,
+      filterSeason,
+      filterCameraGen,
+      filterCountry,
+      filterRegion,
+      selectedFilterSideLineTagId,
+      cardinalDirectionFilter,
+    ]
+  );
+
+  const hasAnyActiveFilter =
+    booleanQuery.trim().length > 0 ||
+    explicitFilterTagIds.length > 0 ||
+    filterYear !== 'all' ||
+    filterMonth !== 'all' ||
+    filterSeason !== 'all' ||
+    filterCameraGen !== 'all' ||
+    filterCountry !== 'all' ||
+    filterRegion !== 'all' ||
+    selectedFilterSideLineTagId !== 'all' ||
+    cardinalDirectionFilter !== 'all';
+
+  /**
+   * Evaluates all active filters (Boolean Expression, Tag Tree checkboxes with AND/OR,
+   * Auto-Metadata filters per road sub-span, and Side-Line Cardinal filters).
+   * Returns both the matching annotations AND the exact sub-polylines of road stretches
+   * and side lines that match!
+   */
+  const filteredRenderItems = useMemo(() => {
     const hasSideLineFilter =
       selectedFilterSideLineTagId !== 'all' || cardinalDirectionFilter !== 'all';
+    const allowedSideLineTagIds =
+      selectedFilterSideLineTagId !== 'all'
+        ? getDescendantIdsInclusive(selectedFilterSideLineTagId, sideLineTags)
+        : null;
+
+    const hasSpanLevelAutoFilter =
+      filterYear !== 'all' ||
+      filterMonth !== 'all' ||
+      filterSeason !== 'all' ||
+      filterCameraGen !== 'all' ||
+      filterCountry !== 'all' ||
+      filterRegion !== 'all';
 
     return annotations
       .map((ann) => {
-        if (hasTagFilter) {
-          const annTags = ann.tagIds || [];
-          const matchesTag = annTags.some((tid) => expandedFilterTagIds.has(tid));
-          if (!matchesTag) return null;
+        // 1. Check Tag Tree Checkbox Filter (explicit selections combined via AND or OR)
+        if (explicitFilterTagIds.length > 0) {
+          const annTagSet = new Set(ann.tagIds || []);
+          const checkSingleTag = (filterTagId: string) => {
+            const descIds = getDescendantIdsInclusive(filterTagId, tagTree);
+            for (const id of descIds) {
+              if (annTagSet.has(id)) return true;
+            }
+            return false;
+          };
+          const matchesTags =
+            filterCombinationMode === 'AND'
+              ? explicitFilterTagIds.every(checkSingleTag)
+              : explicitFilterTagIds.some(checkSingleTag);
+          if (!matchesTags) return null;
         }
 
+        // 2. Check Sub-Span Auto-Metadata + Boolean Query
+        let matchingRoadSubPolylines: Array<Array<[number, number]>> | null =
+          null;
+
+        if (
+          ann.type === 'road-stretch' &&
+          ann.points &&
+          ann.points.length >= 2 &&
+          ann.autoMetaSpans &&
+          ann.autoMetaSpans.length > 0 &&
+          (hasSpanLevelAutoFilter || booleanQuery.trim().length > 0)
+        ) {
+          const matchingSpans = ann.autoMetaSpans.filter((span) => {
+            if (!doesSpanMatchAutoMetaFilters(ann, span, structuredAutoFilters)) {
+              return false;
+            }
+            if (booleanQuery.trim().length > 0) {
+              return evaluateBooleanQueryString(booleanQuery, {
+                ann,
+                span,
+                tagTree,
+                sideLineTags,
+              });
+            }
+            return true;
+          });
+
+          if (matchingSpans.length === 0) return null;
+
+          // If only a subset of the road stretch's spans matched, extract those exact sub-polylines!
+          if (matchingSpans.length < ann.autoMetaSpans.length) {
+            matchingRoadSubPolylines = matchingSpans
+              .map((sp) =>
+                extractSubPolylineByFraction(
+                  ann.points!,
+                  sp.startFrac,
+                  sp.endFrac
+                )
+              )
+              .filter((pts) => pts.length >= 2);
+            if (matchingRoadSubPolylines.length === 0) return null;
+          }
+        } else {
+          // Annotation without multi-spans
+          if (
+            hasSpanLevelAutoFilter &&
+            !doesSpanMatchAutoMetaFilters(ann, undefined, structuredAutoFilters)
+          ) {
+            return null;
+          }
+          if (
+            booleanQuery.trim().length > 0 &&
+            !evaluateBooleanQueryString(booleanQuery, {
+              ann,
+              tagTree,
+              sideLineTags,
+            })
+          ) {
+            return null;
+          }
+        }
+
+        // 3. Check Side-Line & Cardinal Side-of-Road Filter
         if (!hasSideLineFilter) {
-          return { ann, matchingSideSegments: null };
+          return {
+            ann,
+            matchingRoadSubPolylines,
+            matchingSideSegments: null,
+          };
         }
 
         if (
@@ -1740,26 +1143,24 @@ export const CoverageNotesTab: React.FC = () => {
         }
 
         const matchingSideSegments: Array<{
-          attachmentId: string;
+          id: string;
           color: string;
           points: Array<[number, number]>;
         }> = [];
 
         ann.sideLines.forEach((sl, idx) => {
           if (
-            selectedFilterSideLineTagId !== 'all' &&
-            sl.sideLineTagId !== selectedFilterSideLineTagId
+            allowedSideLineTagIds &&
+            !allowedSideLineTagIds.has(sl.sideLineTagId)
           ) {
             return;
           }
           const slDef = sideLineTagById.get(sl.sideLineTagId);
           const color = slDef?.color || '#f43f5e';
-
           const [resolvedStart, resolvedEnd] = resolveSideLineFractions(
             sl,
             ann.roadPois
           );
-
           const subPts = extractSubPolylineByFraction(
             ann.points!,
             resolvedStart,
@@ -1776,7 +1177,7 @@ export const CoverageNotesTab: React.FC = () => {
 
           if (cardinalDirectionFilter === 'all') {
             matchingSideSegments.push({
-              attachmentId: sl.id,
+              id: sl.id,
               color,
               points: offsetPts,
             });
@@ -1801,7 +1202,7 @@ export const CoverageNotesTab: React.FC = () => {
               currentRun.push(offsetPts[i + 1]);
             } else if (currentRun.length >= 2) {
               matchingSideSegments.push({
-                attachmentId: `${sl.id}-${i}`,
+                id: `${sl.id}-${i}`,
                 color,
                 points: currentRun,
               });
@@ -1812,7 +1213,7 @@ export const CoverageNotesTab: React.FC = () => {
           }
           if (currentRun.length >= 2) {
             matchingSideSegments.push({
-              attachmentId: `${sl.id}-end`,
+              id: `${sl.id}-end`,
               color,
               points: currentRun,
             });
@@ -1820,15 +1221,20 @@ export const CoverageNotesTab: React.FC = () => {
         });
 
         if (matchingSideSegments.length === 0) return null;
-        return { ann, matchingSideSegments };
+        return {
+          ann,
+          matchingRoadSubPolylines,
+          matchingSideSegments,
+        };
       })
       .filter(
         (
           item
         ): item is {
           ann: CoverageAnnotation;
+          matchingRoadSubPolylines: Array<Array<[number, number]>> | null;
           matchingSideSegments: Array<{
-            attachmentId: string;
+            id: string;
             color: string;
             points: Array<[number, number]>;
           }> | null;
@@ -1836,11 +1242,22 @@ export const CoverageNotesTab: React.FC = () => {
       );
   }, [
     annotations,
-    expandedFilterTagIds,
+    explicitFilterTagIds,
+    filterCombinationMode,
+    booleanQuery,
+    structuredAutoFilters,
     selectedFilterSideLineTagId,
     cardinalDirectionFilter,
+    tagTree,
+    sideLineTags,
     sideLineTagById,
     mapZoom,
+    filterYear,
+    filterMonth,
+    filterSeason,
+    filterCameraGen,
+    filterCountry,
+    filterRegion,
   ]);
 
   const handleAddTagNode = (e: React.FormEvent) => {
@@ -1860,7 +1277,7 @@ export const CoverageNotesTab: React.FC = () => {
   };
 
   const handleDeleteTagNode = (tagId: string) => {
-    const toRemove = getTagAndDescendantIds(tagId, tagTree);
+    const toRemove = getDescendantIdsInclusive(tagId, tagTree);
     const next = tagTree.filter((t) => !toRemove.has(t.id));
     setTagTree(next);
     saveCoverageTagTree(next);
@@ -1874,6 +1291,7 @@ export const CoverageNotesTab: React.FC = () => {
     const def: SideLineTagDefinition = {
       id: `slt-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
       name: trimmed,
+      parentId: newSideLineTagParentId || null,
       color: newSideLineTagColor,
     };
     const next = [...sideLineTags, def];
@@ -1884,12 +1302,22 @@ export const CoverageNotesTab: React.FC = () => {
   };
 
   const handleDeleteSideLineTag = (id: string) => {
-    const next = sideLineTags.filter((t) => t.id !== id);
+    const toRemove = getDescendantIdsInclusive(id, sideLineTags);
+    const next = sideLineTags.filter((t) => !toRemove.has(t.id));
     setSideLineTags(next);
     saveSideLineTags(next);
-    if (selectedFilterSideLineTagId === id) {
+    if (toRemove.has(selectedFilterSideLineTagId)) {
       setSelectedFilterSideLineTagId('all');
     }
+  };
+
+  const insertTokenIntoBooleanQuery = (token: string) => {
+    setBooleanQuery((prev) => {
+      const trimmed = prev.trimEnd();
+      if (!trimmed) return token;
+      if (trimmed.endsWith('(')) return `${trimmed}${token}`;
+      return `${trimmed} ${token}`;
+    });
   };
 
   const handlePlaceSearch = async (e: React.FormEvent) => {
@@ -1983,6 +1411,7 @@ export const CoverageNotesTab: React.FC = () => {
     [svLineColor]
   );
 
+  // Recursive Road Tag Tree Renderer with Auto-Selected Ancestor Propagation
   const renderTagTreeNodes = (
     parentId: string | null,
     depth: number,
@@ -1992,31 +1421,44 @@ export const CoverageNotesTab: React.FC = () => {
     if (children.length === 0) return null;
 
     return children.map((node) => {
-      const isChecked =
+      const currentSelected =
         mode === 'filter'
-          ? selectedFilterTagIds.includes(node.id)
-          : (selectedAnnotation?.tagIds || []).includes(node.id);
+          ? selectedFilterTagIds
+          : selectedAnnotation?.tagIds || [];
+      const currentAuto =
+        mode === 'filter'
+          ? autoSelectedFilterTagIds
+          : selectedAnnotation?.autoSelectedTagIds || [];
+
+      const isChecked = currentSelected.includes(node.id);
+      const isAutoAncestor = currentAuto.includes(node.id);
 
       return (
-        <div key={node.id} style={{ paddingLeft: depth * 12 }} className="space-y-0.5">
+        <div
+          key={node.id}
+          style={{ paddingLeft: depth * 12 }}
+          className="space-y-0.5"
+        >
           <div className="flex items-center justify-between gap-1.5 py-0.5 px-1.5 rounded hover:bg-slate-800/70">
             <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-slate-200 flex-1 min-w-0">
               <input
                 type="checkbox"
                 checked={isChecked}
                 onChange={() => {
+                  const res = toggleTagWithAutoAncestors(
+                    node.id,
+                    currentSelected,
+                    currentAuto,
+                    tagTree
+                  );
                   if (mode === 'filter') {
-                    setSelectedFilterTagIds((prev) =>
-                      prev.includes(node.id)
-                        ? prev.filter((id) => id !== node.id)
-                        : [...prev, node.id]
-                    );
+                    setSelectedFilterTagIds(res.selectedIds);
+                    setAutoSelectedFilterTagIds(res.autoSelectedIds);
                   } else if (selectedAnnotation) {
-                    const curr = selectedAnnotation.tagIds || [];
-                    const next = curr.includes(node.id)
-                      ? curr.filter((id) => id !== node.id)
-                      : [...curr, node.id];
-                    updateSelectedAnnotation({ tagIds: next });
+                    updateSelectedAnnotation({
+                      tagIds: res.selectedIds,
+                      autoSelectedTagIds: res.autoSelectedIds,
+                    });
                   }
                 }}
                 className="accent-indigo-500 cursor-pointer"
@@ -2025,10 +1467,33 @@ export const CoverageNotesTab: React.FC = () => {
                 className="w-2.5 h-2.5 rounded-full shrink-0"
                 style={{ backgroundColor: node.color }}
               />
-              <span className="truncate">{node.name}</span>
+              <span
+                className={`truncate ${
+                  isAutoAncestor ? 'text-slate-400 italic' : 'text-slate-100'
+                }`}
+              >
+                {node.name}
+              </span>
+              {isAutoAncestor && (
+                <span className="text-[9px] px-1 rounded bg-slate-800 text-slate-400">
+                  auto
+                </span>
+              )}
             </label>
             {mode === 'filter' && (
               <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  title="Insert into Boolean Query"
+                  onClick={() =>
+                    insertTokenIntoBooleanQuery(
+                      node.name.includes(' ') ? `"${node.name}"` : node.name
+                    )
+                  }
+                  className="px-1 text-[9px] rounded bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white cursor-pointer"
+                >
+                  +Expr
+                </button>
                 <button
                   type="button"
                   title={`Add subtag under "${node.name}"`}
@@ -2054,8 +1519,96 @@ export const CoverageNotesTab: React.FC = () => {
     });
   };
 
+  // Recursive Side Line Tag Tree Renderer
+  const renderSideLineTagTreeNodes = (
+    parentId: string | null,
+    depth: number
+  ): React.ReactNode => {
+    const children = sideLineTags.filter(
+      (t) => (t.parentId || null) === parentId
+    );
+    if (children.length === 0) return null;
+
+    return children.map((node) => {
+      const isFiltered = selectedFilterSideLineTagId === node.id;
+      return (
+        <div
+          key={node.id}
+          style={{ paddingLeft: depth * 12 }}
+          className="space-y-0.5"
+        >
+          <div className="flex items-center justify-between gap-1.5 py-0.5 px-1.5 rounded hover:bg-slate-800/70 text-[11px]">
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedFilterSideLineTagId((prev) =>
+                  prev === node.id ? 'all' : node.id
+                )
+              }
+              className={`flex items-center gap-1.5 text-left flex-1 min-w-0 cursor-pointer ${
+                isFiltered ? 'text-emerald-300 font-bold' : 'text-slate-200'
+              }`}
+            >
+              <span
+                className="w-3 h-1.5 rounded shrink-0"
+                style={{ backgroundColor: node.color }}
+              />
+              <span className="truncate">{node.name}</span>
+            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                title="Insert into Boolean Query"
+                onClick={() =>
+                  insertTokenIntoBooleanQuery(
+                    `sideline:${
+                      node.name.includes(' ') ? `"${node.name}"` : node.name
+                    }`
+                  )
+                }
+                className="px-1 text-[9px] rounded bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white cursor-pointer"
+              >
+                +Expr
+              </button>
+              <button
+                type="button"
+                title={`Add subtag under "${node.name}"`}
+                onClick={() => setNewSideLineTagParentId(node.id)}
+                className="px-1 text-[10px] rounded bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white cursor-pointer"
+              >
+                +Sub
+              </button>
+              <button
+                type="button"
+                title="Delete side line tag"
+                onClick={() => handleDeleteSideLineTag(node.id)}
+                className="text-slate-500 hover:text-rose-400 cursor-pointer"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+          {renderSideLineTagTreeNodes(node.id, depth + 1)}
+        </div>
+      );
+    });
+  };
+
   const showRightSidebar =
     showTagManagerPanel || showStreetViewPanel || Boolean(selectedAnnotation);
+
+  const sidebarWidthClass =
+    sidebarSize === 'compact'
+      ? 'w-full lg:w-[360px]'
+      : sidebarSize === 'wide'
+      ? 'w-full lg:w-[56vw] xl:w-[60vw]'
+      : 'w-full lg:w-[460px] xl:w-[520px]';
+
+  // Side lines are only rendered when zoomed in enough (mapZoom >= sideLineMinZoom) or when actively filtering by side line
+  const shouldRenderSideLines =
+    mapZoom >= sideLineMinZoom ||
+    selectedFilterSideLineTagId !== 'all' ||
+    cardinalDirectionFilter !== 'all';
 
   return (
     <div className="h-[calc(100dvh-3.5rem)] flex flex-col bg-slate-950 text-slate-100 select-none overflow-hidden">
@@ -2130,7 +1683,7 @@ export const CoverageNotesTab: React.FC = () => {
           </form>
         </div>
 
-        {/* Center/Right: Map Layer, Customizable SV Coverage Color & Opacity, Tag Tree Filter Toggle */}
+        {/* Center/Right: Map Layer, Customizable SV Coverage Color & Opacity, Tags & Filters */}
         <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex rounded bg-slate-950 p-0.5 border border-slate-800 text-[11px]">
             {(
@@ -2202,19 +1755,14 @@ export const CoverageNotesTab: React.FC = () => {
             type="button"
             onClick={() => setShowTagManagerPanel((v) => !v)}
             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded border text-[11px] font-bold cursor-pointer ${
-              showTagManagerPanel ||
-              selectedFilterTagIds.length > 0 ||
-              selectedFilterSideLineTagId !== 'all' ||
-              cardinalDirectionFilter !== 'all'
+              showTagManagerPanel || hasAnyActiveFilter
                 ? 'bg-indigo-600 border-indigo-400 text-white'
                 : 'bg-slate-950 border-slate-800 text-slate-300 hover:text-white'
             }`}
           >
             <Filter className="w-3.5 h-3.5" />
             <span>Tags & Filters</span>
-            {(selectedFilterTagIds.length > 0 ||
-              selectedFilterSideLineTagId !== 'all' ||
-              cardinalDirectionFilter !== 'all') && (
+            {hasAnyActiveFilter && (
               <span className="px-1 rounded bg-amber-400 text-slate-950 text-[10px]">
                 Active
               </span>
@@ -2268,63 +1816,72 @@ export const CoverageNotesTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Second Row: Annotation Tools & Active Tool Options */}
+      {/* Second Row: Annotation Tools (Select / Edit First and Highlighted) & Active Tool Options */}
       <div className="border-b border-slate-800 bg-slate-900/75 px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 z-20">
         <div className="flex items-center gap-1 flex-wrap">
           {(
             [
               {
+                id: 'select',
+                label: 'Select / Edit',
+                icon: MousePointer,
+                primary: true,
+                tip: 'Primary Tool: Select and edit any road stretch, POI, side line, sphere, text, or pin',
+              },
+              {
                 id: 'inspect',
                 label: 'Street View',
                 icon: Navigation,
+                primary: false,
                 tip: 'Click any covered road to open 360° Street View (Alt+Click works in any tool)',
               },
               {
                 id: 'road-stretch',
                 label: 'Road Stretch',
                 icon: GitCommitHorizontal,
+                primary: false,
                 tip: 'Snap road stretches strictly to roads with official Street View coverage',
               },
               {
                 id: 'road-poi',
                 label: 'Road POI',
                 icon: Crosshair,
+                primary: false,
                 tip: 'Click along any marked road stretch to add a Point of Interest (usable as a Side Line boundary)',
               },
               {
                 id: 'side-line',
                 label: 'Road Side Line',
                 icon: GitBranch,
+                primary: false,
                 tip: 'Click or drag along either side of a marked road stretch to attach a side line',
               },
               {
                 id: 'freehand',
                 label: 'Freehand Pen',
                 icon: Pencil,
+                primary: false,
                 tip: 'Draw freehand lines on the map',
               },
               {
                 id: 'text',
                 label: 'Text Label',
                 icon: Type,
+                primary: false,
                 tip: 'Place clean text on the map',
               },
               {
                 id: 'pin',
                 label: 'Pin',
                 icon: MapPin,
+                primary: false,
                 tip: 'Drop a pin with optional sketch canvas',
-              },
-              {
-                id: 'select',
-                label: 'Select / Edit',
-                icon: MousePointer,
-                tip: 'Select and edit any road stretch, POI, side line, sphere, text, or pin',
               },
               {
                 id: 'eraser',
                 label: 'Eraser',
                 icon: Eraser,
+                primary: false,
                 tip: 'Click any road stretch, POI, side line, marked sphere, text, or pin to delete it',
               },
             ] as const
@@ -2342,7 +1899,11 @@ export const CoverageNotesTab: React.FC = () => {
                 }}
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
                   active
-                    ? 'bg-indigo-600 text-white shadow'
+                    ? tool.primary
+                      ? 'bg-amber-500 text-slate-950 shadow-md ring-2 ring-amber-300/60'
+                      : 'bg-indigo-600 text-white shadow'
+                    : tool.primary
+                    ? 'bg-amber-500/15 text-amber-200 hover:bg-amber-500/25 border border-amber-500/40'
                     : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
                 }`}
               >
@@ -2444,7 +2005,7 @@ export const CoverageNotesTab: React.FC = () => {
                 >
                   {sideLineTags.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.name}
+                      {formatSideLineHierarchicalLabel(t)}
                     </option>
                   ))}
                 </select>
@@ -2589,7 +2150,6 @@ export const CoverageNotesTab: React.FC = () => {
               onUpdateLiveDrag={setLiveDragPoints}
             />
 
-            {/* Base Map Layer */}
             {baseLayer === 'roadmap' && (
               <TileLayer
                 key="google-roadmap"
@@ -2615,7 +2175,6 @@ export const CoverageNotesTab: React.FC = () => {
               />
             )}
 
-            {/* Official Google Street View Coverage Layer */}
             {showOfficialCoverage && (
               <TileLayer
                 key="official-sv-coverage"
@@ -2627,10 +2186,10 @@ export const CoverageNotesTab: React.FC = () => {
               />
             )}
 
-            {/* Native Leaflet Vector Layers (Zero Zoom Stagger) */}
+            {/* Native Leaflet Vector Layers */}
             {!hideAllAnnotations &&
-              filteredAnnotationsWithMatchingSideSegments.map(
-                ({ ann, matchingSideSegments }) => {
+              filteredRenderItems.map(
+                ({ ann, matchingRoadSubPolylines, matchingSideSegments }) => {
                   const isSelected = ann.id === selectedAnnotationId;
 
                   if (
@@ -2638,10 +2197,16 @@ export const CoverageNotesTab: React.FC = () => {
                     ann.points &&
                     ann.points.length >= 2
                   ) {
-                    const chevrons = buildChevronPolylines(
+                    const roadPolylinesToRender = matchingRoadSubPolylines || [
                       ann.points,
-                      ann.direction || 'none',
-                      mapZoom
+                    ];
+
+                    const chevrons = roadPolylinesToRender.flatMap((segPts) =>
+                      buildChevronPolylines(
+                        segPts,
+                        ann.direction || 'none',
+                        mapZoom
+                      )
                     );
                     const midPt = ann.points[Math.floor(ann.points.length / 2)];
 
@@ -2649,44 +2214,41 @@ export const CoverageNotesTab: React.FC = () => {
                       id: string;
                       color: string;
                       points: Array<[number, number]>;
-                    }> =
-                      matchingSideSegments !== null
-                        ? matchingSideSegments.map((s) => ({
-                            id: s.attachmentId,
-                            color: s.color,
-                            points: s.points,
-                          }))
-                        : (ann.sideLines || [])
-                            .map((sl, idx) => {
-                              const def = sideLineTagById.get(sl.sideLineTagId);
-                              const [resolvedStart, resolvedEnd] =
-                                resolveSideLineFractions(sl, ann.roadPois);
-                              const subPts = extractSubPolylineByFraction(
-                                ann.points!,
-                                resolvedStart,
-                                resolvedEnd
-                              );
-                              if (subPts.length < 2) return null;
-                              return {
-                                id: sl.id,
-                                color: def?.color || '#f43f5e',
-                                points: offsetPolylinePerpendicular(
-                                  subPts,
-                                  sl.side,
-                                  7 + (idx % 4) * 4.5,
-                                  mapZoom
-                                ),
-                              };
-                            })
-                            .filter(
-                              (
-                                x
-                              ): x is {
-                                id: string;
-                                color: string;
-                                points: Array<[number, number]>;
-                              } => x !== null
+                    }> = !shouldRenderSideLines
+                      ? []
+                      : matchingSideSegments !== null
+                      ? matchingSideSegments
+                      : (ann.sideLines || [])
+                          .map((sl, idx) => {
+                            const def = sideLineTagById.get(sl.sideLineTagId);
+                            const [resolvedStart, resolvedEnd] =
+                              resolveSideLineFractions(sl, ann.roadPois);
+                            const subPts = extractSubPolylineByFraction(
+                              ann.points!,
+                              resolvedStart,
+                              resolvedEnd
                             );
+                            if (subPts.length < 2) return null;
+                            return {
+                              id: sl.id,
+                              color: def?.color || '#f43f5e',
+                              points: offsetPolylinePerpendicular(
+                                subPts,
+                                sl.side,
+                                7 + (idx % 4) * 4.5,
+                                mapZoom
+                              ),
+                            };
+                          })
+                          .filter(
+                            (
+                              x
+                            ): x is {
+                              id: string;
+                              color: string;
+                              points: Array<[number, number]>;
+                            } => x !== null
+                          );
 
                     return (
                       <React.Fragment key={ann.id}>
@@ -2701,30 +2263,47 @@ export const CoverageNotesTab: React.FC = () => {
                           />
                         )}
 
-                        <Polyline
-                          positions={ann.points}
-                          pathOptions={{
-                            color: ann.color,
-                            weight: ann.strokeWidth || 4,
-                            opacity:
-                              cardinalDirectionFilter !== 'all' ? 0.45 : 0.95,
-                          }}
-                          eventHandlers={{
-                            click: (e) => {
-                              L.DomEvent.stopPropagation(e);
-                              if (activeTool === 'eraser') {
-                                deleteAnnotationById(ann.id);
-                              } else if (activeTool === 'road-poi') {
-                                addPointOfInterestOnRoadStretch(
-                                  e.latlng.lat,
-                                  e.latlng.lng
-                                );
-                              } else {
-                                setSelectedAnnotationId(ann.id);
-                              }
-                            },
-                          }}
-                        />
+                        {/* When sub-span filtering is active and only part of the road stretch matches, dim the full road slightly and render matching sub-spans at full brightness */}
+                        {matchingRoadSubPolylines && (
+                          <Polyline
+                            positions={ann.points}
+                            pathOptions={{
+                              color: ann.color,
+                              weight: Math.max(2, (ann.strokeWidth || 4) - 1),
+                              opacity: 0.22,
+                              dashArray: '4 4',
+                            }}
+                            interactive={false}
+                          />
+                        )}
+
+                        {roadPolylinesToRender.map((segPts, sIdx) => (
+                          <Polyline
+                            key={`${ann.id}-seg-${sIdx}`}
+                            positions={segPts}
+                            pathOptions={{
+                              color: ann.color,
+                              weight: ann.strokeWidth || 4,
+                              opacity:
+                                cardinalDirectionFilter !== 'all' ? 0.45 : 0.95,
+                            }}
+                            eventHandlers={{
+                              click: (e) => {
+                                L.DomEvent.stopPropagation(e);
+                                if (activeTool === 'eraser') {
+                                  deleteAnnotationById(ann.id);
+                                } else if (activeTool === 'road-poi') {
+                                  addPointOfInterestOnRoadStretch(
+                                    e.latlng.lat,
+                                    e.latlng.lng
+                                  );
+                                } else {
+                                  setSelectedAnnotationId(ann.id);
+                                }
+                              },
+                            }}
+                          />
+                        ))}
 
                         {chevrons.length > 0 && (
                           <Polyline
@@ -2742,7 +2321,7 @@ export const CoverageNotesTab: React.FC = () => {
                           />
                         )}
 
-                        {/* Attached Road Side Lines */}
+                        {/* Attached Road Side Lines (only shown when zoomed in >= sideLineMinZoom or filtered) */}
                         {sidePolylines.map((sl) => (
                           <React.Fragment key={sl.id}>
                             {cardinalDirectionFilter !== 'all' && (
@@ -2788,12 +2367,12 @@ export const CoverageNotesTab: React.FC = () => {
                           </React.Fragment>
                         ))}
 
-                        {/* Points of Interest (POIs) along this Road Stretch */}
+                        {/* Points of Interest (POIs) along this Road Stretch — Clean Text (No Rectangle) */}
                         {(ann.roadPois || []).map((poi) => (
                           <React.Fragment key={poi.id}>
                             <CircleMarker
                               center={poi.position}
-                              radius={6}
+                              radius={5.5}
                               pathOptions={{
                                 fillColor: poi.color || '#ffffff',
                                 fillOpacity: 1,
@@ -2824,9 +2403,11 @@ export const CoverageNotesTab: React.FC = () => {
                                 position={poi.position}
                                 icon={L.divIcon({
                                   className: 'coverage-clean-text-icon',
-                                  html: `<div style="transform:translate(-50%,-135%);white-space:nowrap;font-weight:800;font-size:11px;color:#0f172a;background:rgba(255,255,255,0.88);padding:0px 4px;border-radius:3px;border:1px solid ${
+                                  html: `<div style="transform:translate(-50%,-135%);white-space:nowrap;font-weight:800;font-size:11px;color:${
                                     poi.color || '#0f172a'
-                                  };">${poi.label}</div>`,
+                                  };text-shadow:0 0 4px #ffffff,0 0 4px #ffffff,0 0 3px #ffffff;">${
+                                    poi.label
+                                  }</div>`,
                                 })}
                                 interactive={false}
                               />
@@ -3046,16 +2627,67 @@ export const CoverageNotesTab: React.FC = () => {
           )}
         </div>
 
-        {/* Right Sidebar: Dedicated Tags & Filters Panel, Split-Screen Street View & Annotation Inspector */}
+        {/* Right Sidebar: Tags & Filters, Split-Screen Street View & Annotation Inspector */}
         {showRightSidebar && (
-          <div className="w-full lg:w-[460px] xl:w-[520px] border-t lg:border-t-0 lg:border-l border-slate-800 bg-slate-900 flex flex-col max-h-[60dvh] lg:max-h-none z-30 overflow-y-auto">
-            {/* Section A: Tags & Filters Manager (when toggled open) */}
+          <div
+            className={`${sidebarWidthClass} border-t lg:border-t-0 lg:border-l border-slate-800 bg-slate-900 flex flex-col max-h-[62dvh] lg:max-h-none z-30 overflow-y-auto transition-all`}
+          >
+            {/* Sidebar Width Toggle Header */}
+            <div className="px-3 py-1.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between text-[10px] text-slate-400">
+              <div className="flex items-center gap-1">
+                <Maximize2 className="w-3 h-3 text-slate-500" />
+                <span>Panel Width:</span>
+                {(
+                  [
+                    { id: 'compact', label: 'Compact' },
+                    { id: 'standard', label: 'Standard' },
+                    { id: 'wide', label: 'Wide (58%)' },
+                  ] as const
+                ).map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setSidebarSize(s.id)}
+                    className={`px-1.5 py-0.5 rounded font-bold cursor-pointer ${
+                      sidebarSize === s.id
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-900 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              {hasAnyActiveFilter && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBooleanQuery('');
+                    setSelectedFilterTagIds([]);
+                    setAutoSelectedFilterTagIds([]);
+                    setFilterYear('all');
+                    setFilterMonth('all');
+                    setFilterSeason('all');
+                    setFilterCameraGen('all');
+                    setFilterCountry('all');
+                    setFilterRegion('all');
+                    setSelectedFilterSideLineTagId('all');
+                    setCardinalDirectionFilter('all');
+                  }}
+                  className="text-amber-300 hover:underline font-bold cursor-pointer"
+                >
+                  Reset All Filters
+                </button>
+              )}
+            </div>
+
+            {/* Section A: Tags & Filters Manager */}
             {showTagManagerPanel && (
               <div className="p-3 border-b border-slate-800 bg-slate-900 space-y-3 text-xs">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                   <span className="font-bold text-white flex items-center gap-1.5">
                     <Filter className="w-3.5 h-3.5 text-indigo-400" />
-                    TAGS & FILTERS
+                    TAGS, LOGICAL QUERY & AUTO-META FILTERS
                   </span>
                   <button
                     type="button"
@@ -3066,21 +2698,207 @@ export const CoverageNotesTab: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Hierarchical Tag Tree */}
+                {/* 1. Technical Boolean Query Expression Bar */}
+                <div className="space-y-1.5 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-200">
+                      BOOLEAN FILTER EXPRESSION
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {(['(', ')', 'AND', 'OR', 'NOT'] as const).map((op) => (
+                        <button
+                          key={op}
+                          type="button"
+                          onClick={() => insertTokenIntoBooleanQuery(op)}
+                          className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-indigo-600 text-[10px] font-bold text-slate-200 hover:text-white cursor-pointer"
+                        >
+                          {op}
+                        </button>
+                      ))}
+                      {booleanQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setBooleanQuery('')}
+                          className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-bold cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <input
+                    type="text"
+                    value={booleanQuery}
+                    onChange={(e) => setBooleanQuery(e.target.value)}
+                    placeholder="e.g. (tag1 AND tag2) OR tag3, year:2012 AND NOT tag4..."
+                    className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-xs font-mono outline-none focus:border-indigo-500"
+                  />
+                  <div className="text-[10px] text-slate-500 leading-relaxed">
+                    Supports <code>AND</code>, <code>OR</code>, <code>NOT</code>, parentheses <code>(...)</code>, tag names, <code>sideline:name</code>, <code>year:YYYY</code>, <code>month:1..12</code>, <code>season:winter</code>, <code>gen:3</code>, <code>country:XX</code>, <code>region:name</code>. Click <code>+Expr</code> on any tag below to insert it.
+                  </div>
+                </div>
+
+                {/* 2. Automatic Street View Metadata Filters (Sub-Segment Aware) */}
+                <div className="space-y-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-200">
+                      AUTOMATIC COVERAGE METADATA FILTERS
+                    </span>
+                    <span className="text-[10px] text-emerald-400">
+                      Sub-segment aware
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[11px]">
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-0.5">
+                        Capture Year
+                      </label>
+                      <select
+                        value={filterYear}
+                        onChange={(e) => setFilterYear(e.target.value)}
+                        className="w-full px-1.5 py-1 rounded bg-slate-900 border border-slate-700 text-white"
+                      >
+                        <option value="all">All Years</option>
+                        {availableAutoMeta.years.map((y) => (
+                          <option key={y} value={String(y)}>
+                            {y}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-0.5">
+                        Month
+                      </label>
+                      <select
+                        value={filterMonth}
+                        onChange={(e) => setFilterMonth(e.target.value)}
+                        className="w-full px-1.5 py-1 rounded bg-slate-900 border border-slate-700 text-white"
+                      >
+                        <option value="all">All Months</option>
+                        {MONTH_LABELS.map((mName, idx) => (
+                          <option key={mName} value={String(idx + 1)}>
+                            {idx + 1} - {mName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-0.5">
+                        Season
+                      </label>
+                      <select
+                        value={filterSeason}
+                        onChange={(e) => setFilterSeason(e.target.value)}
+                        className="w-full px-1.5 py-1 rounded bg-slate-900 border border-slate-700 text-white"
+                      >
+                        <option value="all">All Seasons</option>
+                        {(['Summer', 'Autumn', 'Winter', 'Spring'] as const).map(
+                          (s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          )
+                        )}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-0.5">
+                        Camera Gen
+                      </label>
+                      <select
+                        value={filterCameraGen}
+                        onChange={(e) => setFilterCameraGen(e.target.value)}
+                        className="w-full px-1.5 py-1 rounded bg-slate-900 border border-slate-700 text-white"
+                      >
+                        <option value="all">All Generations</option>
+                        {(['Gen 1', 'Gen 2', 'Gen 3', 'Gen 4'] as const).map(
+                          (g) => (
+                            <option key={g} value={g}>
+                              {g}
+                            </option>
+                          )
+                        )}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-0.5">
+                        Country
+                      </label>
+                      <select
+                        value={filterCountry}
+                        onChange={(e) => setFilterCountry(e.target.value)}
+                        className="w-full px-1.5 py-1 rounded bg-slate-900 border border-slate-700 text-white"
+                      >
+                        <option value="all">All Countries</option>
+                        {availableAutoMeta.countries.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-0.5">
+                        Region
+                      </label>
+                      <select
+                        value={filterRegion}
+                        onChange={(e) => setFilterRegion(e.target.value)}
+                        className="w-full px-1.5 py-1 rounded bg-slate-900 border border-slate-700 text-white"
+                      >
+                        <option value="all">All Regions</option>
+                        {availableAutoMeta.regions.map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Hierarchical Road Tag Tree */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-slate-300">
-                      TAG TREE (Check to Filter)
+                      ROAD TAG TREE
                     </span>
-                    {selectedFilterTagIds.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedFilterTagIds([])}
-                        className="text-[10px] text-indigo-400 hover:underline cursor-pointer"
-                      >
-                        Clear Filter
-                      </button>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-slate-400">Match:</span>
+                      {(['AND', 'OR'] as const).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setFilterCombinationMode(m)}
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer ${
+                            filterCombinationMode === m
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-slate-950 text-slate-400'
+                          }`}
+                        >
+                          {m}
+                        </button>
+                      ))}
+                      {selectedFilterTagIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedFilterTagIds([]);
+                            setAutoSelectedFilterTagIds([]);
+                          }}
+                          className="text-[10px] text-indigo-400 hover:underline cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {tagTree.length === 0 ? (
@@ -3132,48 +2950,83 @@ export const CoverageNotesTab: React.FC = () => {
                   </form>
                 </div>
 
-                {/* Side Line Tags & Cardinal Side-of-Road Filter */}
+                {/* 4. Hierarchical Side Line Tag Tree & Cardinal Filter */}
                 <div className="border-t border-slate-800 pt-2.5 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-slate-300">
-                      SIDE LINE TAGS & CARDINAL SIDE FILTER
+                      SIDE LINE TAG TREE & CARDINAL FILTER
                     </span>
-                    {(selectedFilterSideLineTagId !== 'all' ||
-                      cardinalDirectionFilter !== 'all') && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedFilterSideLineTagId('all');
-                          setCardinalDirectionFilter('all');
-                        }}
-                        className="text-[10px] text-indigo-400 hover:underline cursor-pointer"
+                    <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                      <span>Min Zoom: {sideLineMinZoom}</span>
+                      <input
+                        type="range"
+                        min={5}
+                        max={14}
+                        step={1}
+                        value={sideLineMinZoom}
+                        onChange={(e) =>
+                          setSideLineMinZoom(Number(e.target.value))
+                        }
+                        title="Minimum map zoom level to display side lines"
+                        className="w-14 accent-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  {sideLineTags.length === 0 ? (
+                    <div className="text-[11px] text-slate-500 bg-slate-950 p-2 rounded border border-slate-800">
+                      No side line tags created yet. Add root or nested side line tags below.
+                    </div>
+                  ) : (
+                    <div className="bg-slate-950 p-2 rounded border border-slate-800 max-h-40 overflow-y-auto space-y-0.5">
+                      {renderSideLineTagTreeNodes(null, 0)}
+                    </div>
+                  )}
+
+                  <form
+                    onSubmit={handleAddSideLineTag}
+                    className="space-y-1.5 pt-1"
+                  >
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={newSideLineTagName}
+                        onChange={(e) => setNewSideLineTagName(e.target.value)}
+                        placeholder="New side line tag..."
+                        className="flex-1 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-white text-[11px] outline-none"
+                      />
+                      <input
+                        type="color"
+                        value={newSideLineTagColor}
+                        onChange={(e) => setNewSideLineTagColor(e.target.value)}
+                        className="w-5 h-5 rounded bg-transparent border-0 cursor-pointer"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <select
+                        value={newSideLineTagParentId}
+                        onChange={(e) =>
+                          setNewSideLineTagParentId(e.target.value)
+                        }
+                        className="flex-1 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-slate-300 text-[11px]"
                       >
-                        Reset
+                        <option value="">Root Side Line Tag (No Parent)</option>
+                        {sideLineTags.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            Subtag of: {formatSideLineHierarchicalLabel(t)}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="submit"
+                        className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] cursor-pointer"
+                      >
+                        +Add
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  </form>
 
-                  <div className="space-y-1">
-                    <label className="block text-[10px] text-slate-400">
-                      Filter by Side Line Tag:
-                    </label>
-                    <select
-                      value={selectedFilterSideLineTagId}
-                      onChange={(e) =>
-                        setSelectedFilterSideLineTagId(e.target.value)
-                      }
-                      className="w-full px-2 py-1 rounded bg-slate-950 border border-slate-800 text-white text-[11px]"
-                    >
-                      <option value="all">All / Any Side Line Tag</option>
-                      {sideLineTags.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
+                  <div className="space-y-1 pt-1">
                     <label className="block text-[10px] text-slate-400">
                       Show where Side Line is on Cardinal Side of Road:
                     </label>
@@ -3206,64 +3059,13 @@ export const CoverageNotesTab: React.FC = () => {
                       ))}
                     </div>
                   </div>
-
-                  {sideLineTags.length > 0 && (
-                    <div className="bg-slate-950 p-2 rounded border border-slate-800 space-y-1 max-h-32 overflow-y-auto">
-                      {sideLineTags.map((t) => (
-                        <div
-                          key={t.id}
-                          className="flex items-center justify-between text-[11px]"
-                        >
-                          <div className="flex items-center gap-1.5">
-                            <span
-                              className="w-3 h-1.5 rounded"
-                              style={{ backgroundColor: t.color }}
-                            />
-                            <span className="text-slate-200">{t.name}</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteSideLineTag(t.id)}
-                            className="text-slate-500 hover:text-rose-400 cursor-pointer"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <form
-                    onSubmit={handleAddSideLineTag}
-                    className="flex items-center gap-1 pt-1"
-                  >
-                    <input
-                      type="text"
-                      value={newSideLineTagName}
-                      onChange={(e) => setNewSideLineTagName(e.target.value)}
-                      placeholder="New side line tag..."
-                      className="flex-1 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-white text-[11px] outline-none"
-                    />
-                    <input
-                      type="color"
-                      value={newSideLineTagColor}
-                      onChange={(e) => setNewSideLineTagColor(e.target.value)}
-                      className="w-5 h-5 rounded bg-transparent border-0 cursor-pointer"
-                    />
-                    <button
-                      type="submit"
-                      className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] cursor-pointer"
-                    >
-                      +Add
-                    </button>
-                  </form>
                 </div>
               </div>
             )}
 
             {/* Section B: Official Street View Panorama Panel */}
             {showStreetViewPanel && (
-              <div className="flex-1 flex flex-col min-h-[260px] border-b border-slate-800">
+              <div className="flex-1 flex flex-col min-h-[280px] border-b border-slate-800">
                 <div className="px-3 py-2 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
@@ -3275,17 +3077,28 @@ export const CoverageNotesTab: React.FC = () => {
                           : 'Official Street View'}
                       </div>
                       {svMeta && (
-                        <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                        <div className="text-[10px] text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                           {svMeta.captureDate && (
                             <span className="text-emerald-400 font-bold">
-                              Date: {svMeta.captureDate}
+                              {svMeta.captureDate}
+                              {svMeta.season ? ` (${svMeta.season})` : ''}
+                            </span>
+                          )}
+                          {svMeta.cameraGen && svMeta.cameraGen !== 'Unknown' && (
+                            <span className="text-indigo-300 font-bold">
+                              {svMeta.cameraGen}
+                            </span>
+                          )}
+                          {svMeta.regionName && (
+                            <span className="text-slate-300">
+                              {svMeta.regionName}
+                              {svMeta.countryCode
+                                ? ` [${svMeta.countryCode}]`
+                                : ''}
                             </span>
                           )}
                           <span className="text-sky-300 font-bold">
-                            Car Dir: {formatCompassDirection(svMeta.carHeadingDeg)}
-                          </span>
-                          <span className="text-amber-300 font-bold">
-                            View: {formatCompassDirection(svViewHeading)}
+                            Car: {formatCompassDirection(svMeta.carHeadingDeg)}
                           </span>
                         </div>
                       )}
@@ -3325,7 +3138,7 @@ export const CoverageNotesTab: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setUseIframeFallback((v) => !v)}
-                          title="Switch between Live-Headlight 360° Viewer and Google Embed"
+                          title="Switch between Distortion-Free Live Viewer and Google Embed"
                           className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer"
                         >
                           {useIframeFallback ? 'Live 360°' : 'Embed'}
@@ -3359,7 +3172,7 @@ export const CoverageNotesTab: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex-1 relative bg-slate-950 min-h-[220px]">
+                <div className="flex-1 relative bg-slate-950 min-h-[260px]">
                   {svLoading && (
                     <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 z-10 text-xs text-slate-300">
                       Loading official Google Street View panorama...
@@ -3441,6 +3254,42 @@ export const CoverageNotesTab: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Automatically Extracted Official Metadata Spans along Road Stretch */}
+                {selectedAnnotation.autoMetaSpans &&
+                  selectedAnnotation.autoMetaSpans.length > 0 && (
+                    <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 space-y-1.5">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase">
+                        Auto-Detected Official Coverage Spans (
+                        {selectedAnnotation.autoMetaSpans.length})
+                      </div>
+                      <div className="space-y-1 max-h-28 overflow-y-auto">
+                        {selectedAnnotation.autoMetaSpans.map((sp, i) => (
+                          <div
+                            key={`${sp.panoId}-${i}`}
+                            className="flex flex-wrap items-center justify-between gap-1 text-[10px] bg-slate-900 px-2 py-1 rounded border border-slate-800"
+                          >
+                            <span className="font-bold text-slate-300">
+                              {Math.round(sp.startFrac * 100)}%–
+                              {Math.round(sp.endFrac * 100)}%
+                            </span>
+                            <span className="text-emerald-400 font-bold">
+                              {sp.captureDate || 'Unknown Date'}
+                              {sp.season ? ` · ${sp.season}` : ''}
+                            </span>
+                            <span className="text-indigo-300 font-bold">
+                              {sp.cameraGen || ''}
+                            </span>
+                            <span className="text-slate-400 truncate max-w-[160px]">
+                              {[sp.regionName, sp.countryCode]
+                                .filter(Boolean)
+                                .join(', ')}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                 {/* Label Input */}
                 <div className="space-y-1">
                   <label className="block text-[11px] font-bold text-slate-300">
@@ -3498,7 +3347,8 @@ export const CoverageNotesTab: React.FC = () => {
                     <div className="space-y-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-bold text-slate-300">
-                          POINTS OF INTEREST ({(selectedAnnotation.roadPois || []).length})
+                          POINTS OF INTEREST (
+                          {(selectedAnnotation.roadPois || []).length})
                         </span>
                         <button
                           type="button"
@@ -3530,7 +3380,8 @@ export const CoverageNotesTab: React.FC = () => {
 
                       {(selectedAnnotation.roadPois || []).length === 0 ? (
                         <div className="text-[10px] text-slate-500">
-                          Use the "Road POI" tool to click on this road stretch, or click "+Add POI" above.
+                          Use the "Road POI" tool to click on this road stretch,
+                          or click "+Add POI" above.
                         </div>
                       ) : (
                         <div className="space-y-1.5">
@@ -3595,10 +3446,11 @@ export const CoverageNotesTab: React.FC = () => {
                                 value={poi.frac}
                                 onChange={(e) => {
                                   const f = Number(e.target.value);
-                                  const pos = interpolatePointOnPolylineByFraction(
-                                    selectedAnnotation.points!,
-                                    f
-                                  );
+                                  const pos =
+                                    interpolatePointOnPolylineByFraction(
+                                      selectedAnnotation.points!,
+                                      f
+                                    );
                                   const next = (
                                     selectedAnnotation.roadPois || []
                                   )
@@ -3619,7 +3471,7 @@ export const CoverageNotesTab: React.FC = () => {
                     </div>
                   )}
 
-                {/* Road Stretch Side Lines Manager (Supports Both POI Boundaries and % Sliders) */}
+                {/* Road Stretch Side Lines Manager */}
                 {selectedAnnotation.type === 'road-stretch' && (
                   <div className="space-y-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
                     <div className="flex items-center justify-between">
@@ -3711,7 +3563,7 @@ export const CoverageNotesTab: React.FC = () => {
                             >
                               {sideLineTags.map((t) => (
                                 <option key={t.id} value={t.id}>
-                                  {t.name}
+                                  {formatSideLineHierarchicalLabel(t)}
                                 </option>
                               ))}
                             </select>
@@ -3754,7 +3606,6 @@ export const CoverageNotesTab: React.FC = () => {
                             </div>
                           </div>
 
-                          {/* Start Boundary & End Boundary Selectors (POI or Custom %) */}
                           {pois.length > 0 && (
                             <div className="grid grid-cols-2 gap-1.5 text-[10px]">
                               <div>
@@ -3871,7 +3722,6 @@ export const CoverageNotesTab: React.FC = () => {
                             </div>
                           )}
 
-                          {/* Percentage Sliders along the Road */}
                           <div className="flex items-center gap-2 text-[10px] text-slate-400">
                             <span>Start {Math.round(effStart * 100)}%</span>
                             <input
@@ -3944,7 +3794,7 @@ export const CoverageNotesTab: React.FC = () => {
                   />
                 )}
 
-                {/* Assign Tags from Tag Tree */}
+                {/* Assign Tags from Tag Tree (with Auto-Selected Ancestor Propagation) */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <label className="text-[11px] font-bold text-slate-300">
