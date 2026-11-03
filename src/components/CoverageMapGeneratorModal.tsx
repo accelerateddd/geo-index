@@ -6,9 +6,11 @@ import {
   Image as ImageIcon,
   Layers,
   MapPin,
+  Maximize2,
   RefreshCw,
   Sliders,
   Sparkles,
+  Trash2,
   X,
 } from 'lucide-react';
 import type {
@@ -77,7 +79,12 @@ interface CoverageMapGeneratorModalProps {
   currentViewportBounds: MapViewportBounds | null;
 }
 
-type ScopeMode = 'country' | 'subdivision' | 'custom';
+export interface ScopeRegionItem {
+  countryIso3: string;
+  subdivisionIds: string[];
+}
+
+export type MapFramingMode = 'fit-scope' | 'custom';
 type ExteriorMaskMode = 'blackout' | 'darken';
 type BaseMapStyle = 'clean-light' | 'clean-dark' | 'google-roadmap' | 'google-satellite';
 type MultiTagRenderMode = 'side-by-side' | 'alternating-dash';
@@ -287,13 +294,18 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
   // Loaded GeoJSON & City Datasets
   const [countries, setCountries] = useState<CountryOption[]>([]);
   const [citiesByIso3, setCitiesByIso3] = useState<Record<string, CityEntry[]>>({});
-  const [subdivisions, setSubdivisions] = useState<SubdivisionOption[]>([]);
+  const [subdivisionsByCountry, setSubdivisionsByCountry] = useState<
+    Record<string, SubdivisionOption[]>
+  >({});
   const [loadingGeoData, setLoadingGeoData] = useState<boolean>(false);
 
-  // Scope Settings
-  const [scopeMode, setScopeMode] = useState<ScopeMode>('country');
-  const [selectedCountryIso3, setSelectedCountryIso3] = useState<string>('BWA');
-  const [selectedSubdivisionId, setSelectedSubdivisionId] = useState<string>('');
+  // Masking Scope (What Gets Preserved / Non-Blacked Out)
+  const [scopeRegions, setScopeRegions] = useState<ScopeRegionItem[]>(() => [
+    { countryIso3: 'BWA', subdivisionIds: [] },
+  ]);
+
+  // Map Framing / Viewport (Region the Map Shows)
+  const [framingMode, setFramingMode] = useState<MapFramingMode>('fit-scope');
   const [customBounds, setCustomBounds] = useState<MapViewportBounds>(() =>
     currentViewportBounds || {
       north: -17.5,
@@ -347,9 +359,9 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
   const [sideLinePlacement, setSideLinePlacement] =
     useState<SideLinePlacementMode>('offset-side');
 
-  // Place Names, POIs & Highway Names
+  // Place Names, POIs & Highway Names (Population centres off by default)
   const [placeNameDensity, setPlaceNameDensity] =
-    useState<PlaceNameDensity>('medium');
+    useState<PlaceNameDensity>('none');
   const [poiPlotMode, setPoiPlotMode] = useState<PoiPlotMode>('none');
   const [selectedPoiTagIds, setSelectedPoiTagIds] = useState<string[]>([]);
   const [showHighwayNames, setShowHighwayNames] = useState<boolean>(false);
@@ -454,7 +466,7 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
         }
         const topIso2 = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
         if (topIso2 && isoMap[topIso2]) {
-          setSelectedCountryIso3(isoMap[topIso2]);
+          setScopeRegions([{ countryIso3: isoMap[topIso2], subdivisionIds: [] }]);
         }
       })
       .catch((err) => {
@@ -469,109 +481,101 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
     };
   }, [isOpen, countries.length, annotations]);
 
-  // Load subdivisions for selectedCountryIso3 from /data/adm1/<iso3>.geojson
+  // Load subdivisions for any country included in scopeRegions
   useEffect(() => {
-    if (!isOpen || !selectedCountryIso3) return;
-    let cancelled = false;
-    const url = `/data/adm1/${selectedCountryIso3.toLowerCase()}.geojson`;
-    fetch(url)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((geo) => {
-        if (cancelled) return;
-        if (!geo || !Array.isArray(geo.features)) {
-          setSubdivisions([]);
-          setSelectedSubdivisionId('');
-          return;
-        }
-        const subs: SubdivisionOption[] = (
-          geo.features as GeoJsonPolygonFeature[]
-        )
-          .map((feat, idx) => {
-            const rawName = String(
-              feat.properties?.name ||
-                feat.properties?.NAME_1 ||
-                feat.properties?.region ||
-                `Region ${idx + 1}`
-            );
-            const typeEn = String(feat.properties?.type_en || '');
-            return {
-              id: `${selectedCountryIso3}-${idx}-${rawName}`,
-              name: rawName,
-              typeEn,
-              feature: feat,
-            };
+    if (!isOpen) return;
+    for (const sr of scopeRegions) {
+      if (!subdivisionsByCountry[sr.countryIso3]) {
+        fetch(`/data/adm1/${sr.countryIso3.toLowerCase()}.geojson`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((geo) => {
+            if (!geo || !Array.isArray(geo.features)) return;
+            const subs: SubdivisionOption[] = (
+              geo.features as GeoJsonPolygonFeature[]
+            )
+              .map((feat, idx) => {
+                const rawName = String(
+                  feat.properties?.name ||
+                    feat.properties?.NAME_1 ||
+                    feat.properties?.region ||
+                    `Region ${idx + 1}`
+                );
+                const typeEn = String(feat.properties?.type_en || '');
+                return {
+                  id: `${sr.countryIso3}-${idx}-${rawName}`,
+                  name: rawName,
+                  typeEn,
+                  feature: feat,
+                };
+              })
+              .sort((a, b) => a.name.localeCompare(b.name));
+            setSubdivisionsByCountry((prev) => ({
+              ...prev,
+              [sr.countryIso3]: subs,
+            }));
           })
-          .sort((a, b) => a.name.localeCompare(b.name));
-        setSubdivisions(subs);
-        if (subs.length > 0) {
-          setSelectedSubdivisionId((prev) =>
-            subs.some((s) => s.id === prev) ? prev : subs[0].id
-          );
-        } else {
-          setSelectedSubdivisionId('');
+          .catch(() => {});
+      }
+    }
+  }, [isOpen, scopeRegions, subdivisionsByCountry]);
+
+  // Active region features forming the unmasked/preserved area
+  const activeRegionFeatures = useMemo((): GeoJsonPolygonFeature[] => {
+    const feats: GeoJsonPolygonFeature[] = [];
+    for (const sr of scopeRegions) {
+      const country = countries.find((c) => c.iso3 === sr.countryIso3);
+      if (!country) continue;
+      if (sr.subdivisionIds.length === 0) {
+        feats.push(country.feature);
+      } else {
+        const subs = subdivisionsByCountry[sr.countryIso3] || [];
+        for (const sId of sr.subdivisionIds) {
+          const found = subs.find((s) => s.id === sId);
+          if (found) {
+            feats.push(found.feature);
+          }
         }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setSubdivisions([]);
-          setSelectedSubdivisionId('');
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, selectedCountryIso3]);
-
-  // Automatically set Exterior Mask default based on Scope Mode:
-  // Country -> 'blackout' (Image 2 default)
-  // Subdivision -> 'darken' (Image 3 default, so road continuations outside border remain visible)
-  const handleSelectScopeMode = (nextMode: ScopeMode) => {
-    setScopeMode(nextMode);
-    if (nextMode === 'country') {
-      setExteriorMask('blackout');
-    } else if (nextMode === 'subdivision') {
-      setExteriorMask('darken');
+      }
     }
-  };
+    return feats;
+  }, [scopeRegions, countries, subdivisionsByCountry]);
 
-  const activeRegionFeature = useMemo((): GeoJsonPolygonFeature | null => {
-    if (scopeMode === 'country') {
-      return (
-        countries.find((c) => c.iso3 === selectedCountryIso3)?.feature || null
-      );
-    }
-    if (scopeMode === 'subdivision') {
-      return (
-        subdivisions.find((s) => s.id === selectedSubdivisionId)?.feature ||
-        null
-      );
-    }
-    return null;
-  }, [scopeMode, countries, selectedCountryIso3, subdivisions, selectedSubdivisionId]);
-
+  // Compute map bounds: automatic fit to preserved scope or custom bounds
   const activeBounds = useMemo((): MapViewportBounds => {
-    if (activeRegionFeature) {
-      const raw = computeGeometryBounds(activeRegionFeature.geometry);
-      const latSpan = Math.max(0.05, raw.north - raw.south);
-      const lngSpan = Math.max(0.05, raw.east - raw.west);
-      // Add padding around the region polygon (more padding when darkening outside so context roads show)
+    if (framingMode === 'fit-scope' && activeRegionFeatures.length > 0) {
+      let north = -90;
+      let south = 90;
+      let east = -180;
+      let west = 180;
+
+      for (const feat of activeRegionFeatures) {
+        const b = computeGeometryBounds(feat.geometry);
+        if (b.north > north) north = b.north;
+        if (b.south < south) south = b.south;
+        if (b.east > east) east = b.east;
+        if (b.west < west) west = b.west;
+      }
+
+      const latSpan = Math.max(0.05, north - south);
+      const lngSpan = Math.max(0.05, east - west);
       const padFrac = exteriorMask === 'darken' ? 0.14 : 0.09;
       return {
-        north: Math.min(84, raw.north + latSpan * padFrac),
-        south: Math.max(-84, raw.south - latSpan * padFrac),
-        east: Math.min(179.9, raw.east + lngSpan * padFrac),
-        west: Math.max(-179.9, raw.west - lngSpan * padFrac),
+        north: Math.min(84, north + latSpan * padFrac),
+        south: Math.max(-84, south - latSpan * padFrac),
+        east: Math.min(179.9, east + lngSpan * padFrac),
+        west: Math.max(-179.9, west - lngSpan * padFrac),
       };
     }
     return customBounds;
-  }, [activeRegionFeature, exteriorMask, customBounds]);
+  }, [framingMode, activeRegionFeatures, exteriorMask, customBounds]);
 
-  // Fetch extra places & highway refs from Overpass when needed (for subdivision/custom scopes or dense cities / highway names)
+  // Fetch extra places & highway refs from Overpass when needed (for custom scopes or dense cities / highway names)
   useEffect(() => {
     if (!isOpen) return;
     const needOverpassPlaces =
       placeNameDensity === 'dense' ||
-      (placeNameDensity === 'medium' && scopeMode !== 'country');
+      (placeNameDensity === 'medium' &&
+        scopeRegions.some((sr) => sr.subdivisionIds.length > 0));
     const needHighways = showHighwayNames;
 
     if (!needOverpassPlaces && !needHighways) {
@@ -658,7 +662,7 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [isOpen, activeBounds, placeNameDensity, scopeMode, showHighwayNames]);
+  }, [isOpen, activeBounds, placeNameDensity, scopeRegions, showHighwayNames]);
 
   // Core High-Resolution Canvas Map Renderer
   const renderMetaMapToCanvas = useCallback(async () => {
@@ -801,7 +805,7 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
       } else {
         const interiorColor =
           baseMapStyle === 'clean-light' ? '#f4f5f6' : '#161b22';
-        if (activeRegionFeature) {
+        if (activeRegionFeatures.length > 0) {
           if (exteriorMask === 'darken') {
             // Fill whole canvas with dimmed version of interior, then bright interior
             ctx.fillStyle =
@@ -809,7 +813,9 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
             ctx.fillRect(0, 0, width, height);
           }
           ctx.save();
-          traceGeometryPath(ctx, activeRegionFeature.geometry);
+          for (const feat of activeRegionFeatures) {
+            traceGeometryPath(ctx, feat.geometry);
+          }
           ctx.fillStyle = interiorColor;
           ctx.fill('evenodd');
           ctx.restore();
@@ -819,15 +825,13 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
         }
       }
 
-      // Optional Subdivision Borders when in Country Scope
-      if (
-        scopeMode === 'country' &&
-        showSubdivisionBordersInCountry &&
-        subdivisions.length > 0
-      ) {
+      // Optional Subdivision Borders when enabled
+      if (showSubdivisionBordersInCountry) {
         ctx.save();
-        if (activeRegionFeature) {
-          traceGeometryPath(ctx, activeRegionFeature.geometry);
+        if (activeRegionFeatures.length > 0) {
+          for (const feat of activeRegionFeatures) {
+            traceGeometryPath(ctx, feat.geometry);
+          }
           ctx.clip('evenodd');
         }
         ctx.strokeStyle =
@@ -835,9 +839,12 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
             ? 'rgba(100, 116, 139, 0.42)'
             : 'rgba(148, 163, 184, 0.35)';
         ctx.lineWidth = 1.6;
-        for (const sub of subdivisions) {
-          traceGeometryPath(ctx, sub.feature.geometry);
-          ctx.stroke();
+        for (const sr of scopeRegions) {
+          const subs = subdivisionsByCountry[sr.countryIso3] || [];
+          for (const sub of subs) {
+            traceGeometryPath(ctx, sub.feature.geometry);
+            ctx.stroke();
+          }
         }
         ctx.restore();
       }
@@ -1035,7 +1042,7 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
       }
 
       // 4. Apply Exterior Region Masking ('blackout' vs 'darken') & Crisp Region Border
-      if (activeRegionFeature) {
+      if (activeRegionFeatures.length > 0) {
         // Create an offscreen mask where exterior is filled using evenodd winding rule
         const maskCanvas = document.createElement('canvas');
         maskCanvas.width = width;
@@ -1045,15 +1052,17 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
           mCtx.beginPath();
           // Outer canvas rectangle
           mCtx.rect(0, 0, width, height);
-          // Inner polygon rings
-          const rings = getPolygonRings(activeRegionFeature.geometry);
-          for (const ring of rings) {
-            ring.forEach(([lat, lng], idx) => {
-              const [px, py] = projectLatLngToPx(lat, lng);
-              if (idx === 0) mCtx.moveTo(px, py);
-              else mCtx.lineTo(px, py);
-            });
-            mCtx.closePath();
+          // Inner polygon rings for all active features
+          for (const feat of activeRegionFeatures) {
+            const rings = getPolygonRings(feat.geometry);
+            for (const ring of rings) {
+              ring.forEach(([lat, lng], idx) => {
+                const [px, py] = projectLatLngToPx(lat, lng);
+                if (idx === 0) mCtx.moveTo(px, py);
+                else mCtx.lineTo(px, py);
+              });
+              mCtx.closePath();
+            }
           }
           mCtx.fillStyle =
             exteriorMask === 'blackout'
@@ -1063,20 +1072,22 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
           ctx.drawImage(maskCanvas, 0, 0);
         }
 
-        // Draw Region Outer Border
+        // Draw Region Outer Border for all active features
         ctx.save();
-        traceGeometryPath(ctx, activeRegionFeature.geometry);
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
-        if (exteriorMask === 'darken') {
-          ctx.strokeStyle = '#050505';
-          ctx.lineWidth = 6.5;
-          ctx.stroke();
-        } else {
-          ctx.strokeStyle =
-            baseMapStyle === 'clean-light' ? '#1e293b' : '#475569';
-          ctx.lineWidth = 2.5;
-          ctx.stroke();
+        for (const feat of activeRegionFeatures) {
+          traceGeometryPath(ctx, feat.geometry);
+          if (exteriorMask === 'darken') {
+            ctx.strokeStyle = '#050505';
+            ctx.lineWidth = 6.5;
+            ctx.stroke();
+          } else {
+            ctx.strokeStyle =
+              baseMapStyle === 'clean-light' ? '#1e293b' : '#475569';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+          }
         }
         ctx.restore();
       }
@@ -1142,8 +1153,10 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
 
         for (const hw of highwayCandidates) {
           if (
-            activeRegionFeature &&
-            !isPointInGeometry(hw.lat, hw.lng, activeRegionFeature.geometry)
+            activeRegionFeatures.length > 0 &&
+            !activeRegionFeatures.some((f) =>
+              isPointInGeometry(hw.lat, hw.lng, f.geometry)
+            )
           ) {
             continue;
           }
@@ -1313,7 +1326,17 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
 
       // 7. Render Automatic Population Centres (Place Names)
       if (placeNameDensity !== 'none') {
-        const nativeCities = citiesByIso3[selectedCountryIso3] || [];
+        const nativeCities: CityEntry[] = [];
+        if (scopeRegions.length > 0) {
+          for (const sr of scopeRegions) {
+            const list = citiesByIso3[sr.countryIso3] || [];
+            nativeCities.push(...list);
+          }
+        } else {
+          for (const list of Object.values(citiesByIso3)) {
+            nativeCities.push(...list);
+          }
+        }
         const combinedCities: CityEntry[] = [];
         const seenNames = new Set<string>();
 
@@ -1321,8 +1344,10 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
           const key = c.name.toLowerCase();
           if (seenNames.has(key)) continue;
           if (
-            activeRegionFeature &&
-            !isPointInGeometry(c.lat, c.lng, activeRegionFeature.geometry)
+            activeRegionFeatures.length > 0 &&
+            !activeRegionFeatures.some((f) =>
+              isPointInGeometry(c.lat, c.lng, f.geometry)
+            )
           ) {
             continue;
           }
@@ -1544,7 +1569,7 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
     }
   }, [
     activeBounds,
-    activeRegionFeature,
+    activeRegionFeatures,
     annotations,
     baseMapStyle,
     citiesByIso3,
@@ -1565,8 +1590,7 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
     roadStrokeThickness,
     roadTagColorOverrides,
     roadTagLabelOverrides,
-    scopeMode,
-    selectedCountryIso3,
+    scopeRegions,
     selectedPoiTagIds,
     selectedRoadTagIds,
     selectedSideLineTagIds,
@@ -1577,7 +1601,7 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
     sideLineLabelOverrides,
     sideLinePlacement,
     sideLineTags,
-    subdivisions,
+    subdivisionsByCountry,
     tagTree,
     untaggedRoadColor,
     watermarkText,
@@ -1619,10 +1643,8 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
     a.href = url;
     const slug = (
       mapTitle ||
-      (scopeMode === 'country'
-        ? selectedCountryIso3
-        : scopeMode === 'subdivision'
-        ? selectedSubdivisionId
+      (scopeRegions.length > 0
+        ? scopeRegions.map((r) => r.countryIso3).join('-')
         : 'custom-region')
     )
       .toLowerCase()
@@ -1698,95 +1720,288 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
         <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
           {/* Left Configuration Sidebar */}
           <div className="w-full lg:w-[440px] border-b lg:border-b-0 lg:border-r border-slate-800 bg-slate-900 overflow-y-auto p-3.5 space-y-4 text-xs">
-            {/* 1. Scope & Region Selection */}
+            {/* 1. Masking Scope (What Gets Preserved / Non-Blacked Out) */}
             <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-200 flex items-center gap-1.5">
                   <Sliders className="w-3.5 h-3.5 text-indigo-400" />
-                  1. REGION & SCOPE
+                  1. MASKING SCOPE (Preserved Regions)
                 </span>
                 {loadingGeoData && (
                   <span className="text-[10px] text-amber-300">
-                    Loading boundaries...
+                    Loading countries...
                   </span>
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-1">
-                {(
-                  [
-                    { id: 'country', label: 'Country' },
-                    { id: 'subdivision', label: 'Subdivision' },
-                    { id: 'custom', label: 'Custom View' },
-                  ] as const
-                ).map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => handleSelectScopeMode(m.id)}
-                    className={`py-1.5 rounded font-bold text-[11px] border cursor-pointer ${
-                      scopeMode === m.id
-                        ? 'bg-indigo-600 border-indigo-400 text-white'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    {m.label}
-                  </button>
-                ))}
+              <div className="text-[11px] text-slate-400 leading-relaxed">
+                Select one or multiple countries and optional subdivisions to keep visible. Outside areas are blacked out or darkened.
               </div>
 
-              {(scopeMode === 'country' || scopeMode === 'subdivision') && (
-                <div>
-                  <label className="block text-[10px] text-slate-400 mb-1">
-                    Country
-                  </label>
-                  <select
-                    value={selectedCountryIso3}
-                    onChange={(e) => setSelectedCountryIso3(e.target.value)}
-                    className="w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-white font-bold"
-                  >
-                    {countries.map((c) => (
+              {/* Selected Scope Countries */}
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                {scopeRegions.length === 0 ? (
+                  <div className="p-2.5 rounded bg-slate-900 border border-slate-800 text-[11px] text-slate-400">
+                    No regions selected. The map will render unmasked without exterior blackout.
+                  </div>
+                ) : (
+                  scopeRegions.map((sr) => {
+                    const country = countries.find((c) => c.iso3 === sr.countryIso3);
+                    const countrySubs = subdivisionsByCountry[sr.countryIso3] || [];
+                    const isAllSubs = sr.subdivisionIds.length === 0;
+
+                    return (
+                      <div
+                        key={sr.countryIso3}
+                        className="bg-slate-900 border border-slate-800 rounded-lg p-2.5 space-y-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 font-bold text-slate-100 text-xs truncate">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                            <span className="truncate">{country ? country.name : sr.countryIso3}</span>
+                            <span className="text-[10px] text-slate-400 shrink-0">[{sr.countryIso3}]</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setScopeRegions((prev) =>
+                                prev.filter((item) => item.countryIso3 !== sr.countryIso3)
+                              )
+                            }
+                            className="p-1 rounded text-slate-400 hover:text-rose-400 cursor-pointer"
+                            title="Remove country from scope"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Whole Country vs Specific Subdivisions */}
+                        <div className="grid grid-cols-2 gap-1 text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setScopeRegions((prev) =>
+                                prev.map((item) =>
+                                  item.countryIso3 === sr.countryIso3
+                                    ? { ...item, subdivisionIds: [] }
+                                    : item
+                                )
+                              )
+                            }
+                            className={`py-1 rounded font-bold cursor-pointer ${
+                              isAllSubs
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-slate-950 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            Whole Country
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (countrySubs.length > 0 && isAllSubs) {
+                                setScopeRegions((prev) =>
+                                  prev.map((item) =>
+                                    item.countryIso3 === sr.countryIso3
+                                      ? { ...item, subdivisionIds: [countrySubs[0].id] }
+                                      : item
+                                  )
+                                );
+                              }
+                            }}
+                            className={`py-1 rounded font-bold cursor-pointer ${
+                              !isAllSubs
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-slate-950 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            Subdivisions ({countrySubs.length})
+                          </button>
+                        </div>
+
+                        {/* Subdivisions Checkbox Selector */}
+                        {!isAllSubs && (
+                          <div className="bg-slate-950 p-2 rounded border border-slate-800 space-y-1.5">
+                            <div className="flex items-center justify-between text-[10px]">
+                              <span className="text-slate-400 font-bold">
+                                Included Subdivisions:
+                              </span>
+                              <div className="flex items-center gap-1.5 text-indigo-400">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setScopeRegions((prev) =>
+                                      prev.map((item) =>
+                                        item.countryIso3 === sr.countryIso3
+                                          ? {
+                                              ...item,
+                                              subdivisionIds: countrySubs.map((s) => s.id),
+                                            }
+                                          : item
+                                      )
+                                    )
+                                  }
+                                  className="hover:underline cursor-pointer"
+                                >
+                                  All
+                                </button>
+                                <span>|</span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setScopeRegions((prev) =>
+                                      prev.map((item) =>
+                                        item.countryIso3 === sr.countryIso3
+                                          ? { ...item, subdivisionIds: [] }
+                                          : item
+                                      )
+                                    )
+                                  }
+                                  className="hover:underline cursor-pointer"
+                                >
+                                  Reset
+                                </button>
+                              </div>
+                            </div>
+                            <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
+                              {countrySubs.map((sub) => {
+                                const isChecked = sr.subdivisionIds.includes(sub.id);
+                                return (
+                                  <label
+                                    key={sub.id}
+                                    className="flex items-center gap-1.5 text-[11px] text-slate-200 cursor-pointer"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {
+                                        setScopeRegions((prev) =>
+                                          prev.map((item) => {
+                                            if (item.countryIso3 !== sr.countryIso3)
+                                              return item;
+                                            const nextIds = isChecked
+                                              ? item.subdivisionIds.filter(
+                                                  (id) => id !== sub.id
+                                                )
+                                              : [...item.subdivisionIds, sub.id];
+                                            return {
+                                              ...item,
+                                              subdivisionIds: nextIds,
+                                            };
+                                          })
+                                        );
+                                      }}
+                                      className="accent-indigo-500"
+                                    />
+                                    <span className="truncate">{sub.name}</span>
+                                    {sub.typeEn && (
+                                      <span className="text-[10px] text-slate-500 truncate">
+                                        ({sub.typeEn})
+                                      </span>
+                                    )}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Add Country Dropdown */}
+              <div className="flex items-center gap-1.5 pt-1">
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const nextIso3 = e.target.value;
+                    if (!nextIso3) return;
+                    if (!scopeRegions.some((r) => r.countryIso3 === nextIso3)) {
+                      setScopeRegions((prev) => [
+                        ...prev,
+                        { countryIso3: nextIso3, subdivisionIds: [] },
+                      ]);
+                    }
+                  }}
+                  className="flex-1 px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-xs font-bold"
+                >
+                  <option value="">+ Add Country to Scope...</option>
+                  {countries
+                    .filter((c) => !scopeRegions.some((r) => r.countryIso3 === c.iso3))
+                    .map((c) => (
                       <option key={c.iso3} value={c.iso3}>
-                        {c.name} ({c.iso2})
+                        {c.name} ({c.iso3})
                       </option>
                     ))}
-                  </select>
-                </div>
-              )}
-
-              {scopeMode === 'subdivision' && (
-                <div>
-                  <label className="block text-[10px] text-slate-400 mb-1">
-                    Subdivision / District / Oblast ({subdivisions.length})
-                  </label>
-                  <select
-                    value={selectedSubdivisionId}
-                    onChange={(e) => setSelectedSubdivisionId(e.target.value)}
-                    className="w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-white font-bold"
+                </select>
+                {scopeRegions.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setScopeRegions([])}
+                    className="px-2 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-[10px] font-bold cursor-pointer"
                   >
-                    {subdivisions.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                        {s.typeEn ? ` (${s.typeEn})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+                    Clear All
+                  </button>
+                )}
+              </div>
+            </div>
 
-              {scopeMode === 'custom' && (
-                <div className="space-y-2 pt-1">
+            {/* 2. Map Framing / Viewport (Region the Map Shows) */}
+            <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2.5">
+              <div className="font-bold text-slate-200 flex items-center gap-1.5">
+                <Maximize2 className="w-3.5 h-3.5 text-indigo-400" />
+                2. MAP FRAMING (Region the Map Shows)
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setFramingMode('fit-scope')}
+                  className={`py-1.5 px-2 rounded border text-[11px] font-bold cursor-pointer ${
+                    framingMode === 'fit-scope'
+                      ? 'bg-indigo-600 border-indigo-400 text-white'
+                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Fit Preserved Scope
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFramingMode('custom');
+                    if (currentViewportBounds) {
+                      setCustomBounds(currentViewportBounds);
+                    }
+                  }}
+                  className={`py-1.5 px-2 rounded border text-[11px] font-bold cursor-pointer ${
+                    framingMode === 'custom'
+                      ? 'bg-indigo-600 border-indigo-400 text-white'
+                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Custom View / Crop
+                </button>
+              </div>
+
+              {framingMode === 'fit-scope' ? (
+                <div className="text-[11px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-800 leading-relaxed">
+                  The map viewport automatically frames all non-blacked out countries and subdivisions selected in Scope.
+                </div>
+              ) : (
+                <div className="space-y-2 bg-slate-900 p-2.5 rounded-lg border border-slate-800">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-slate-400">
-                      Bounding Box Coordinates (Lat / Lng)
+                    <span className="text-[10px] text-slate-400 font-bold">
+                      Custom Viewport Bounds
                     </span>
                     {currentViewportBounds && (
                       <button
                         type="button"
                         onClick={() => setCustomBounds(currentViewportBounds)}
-                        className="px-2 py-0.5 rounded bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-[10px] font-bold cursor-pointer"
+                        className="px-2 py-0.5 rounded bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-[10px] font-bold cursor-pointer hover:bg-indigo-600/50"
                       >
-                        Use Current Map View
+                        Reset to Current Map View
                       </button>
                     )}
                   </div>
@@ -1803,7 +2018,7 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
                             north: Number(e.target.value),
                           }))
                         }
-                        className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-700 text-white"
+                        className="w-full px-2 py-1 rounded bg-slate-950 border border-slate-700 text-white"
                       />
                     </div>
                     <div>
@@ -1818,7 +2033,7 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
                             south: Number(e.target.value),
                           }))
                         }
-                        className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-700 text-white"
+                        className="w-full px-2 py-1 rounded bg-slate-950 border border-slate-700 text-white"
                       />
                     </div>
                     <div>
@@ -1833,7 +2048,7 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
                             west: Number(e.target.value),
                           }))
                         }
-                        className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-700 text-white"
+                        className="w-full px-2 py-1 rounded bg-slate-950 border border-slate-700 text-white"
                       />
                     </div>
                     <div>
@@ -1848,7 +2063,7 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
                             east: Number(e.target.value),
                           }))
                         }
-                        className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-700 text-white"
+                        className="w-full px-2 py-1 rounded bg-slate-950 border border-slate-700 text-white"
                       />
                     </div>
                   </div>
@@ -1863,7 +2078,7 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
                 2. BASE MAP & EXTERIOR MASKING
               </div>
 
-              {scopeMode !== 'custom' && (
+              {scopeRegions.length > 0 && (
                 <div>
                   <label className="block text-[10px] text-slate-400 mb-1">
                     Area Outside Region Boundary
@@ -1924,7 +2139,7 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
                 </div>
               </div>
 
-              {scopeMode === 'country' && subdivisions.length > 0 && (
+              {scopeRegions.length > 0 && (
                 <label className="flex items-center gap-2 text-[11px] text-slate-300 cursor-pointer pt-1">
                   <input
                     type="checkbox"
@@ -2343,7 +2558,7 @@ export const CoverageMapGeneratorModal: React.FC<CoverageMapGeneratorModalProps>
                   onChange={(e) => setShowHighwayNames(e.target.checked)}
                   className="accent-indigo-500"
                 />
-                <span>Show Major Road / Highway Names (e.g. A1, A35)</span>
+                <span>Show Highway & Major Road Names</span>
               </label>
             </div>
 

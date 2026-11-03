@@ -12,6 +12,8 @@ import L from 'leaflet';
 import {
   ArrowUpRight,
   Bookmark,
+  ChevronDown,
+  ChevronUp,
   Compass,
   Crosshair,
   Download,
@@ -19,6 +21,7 @@ import {
   Eye,
   EyeOff,
   ExternalLink,
+  FileText,
   Filter,
   FolderPlus,
   GitBranch,
@@ -33,6 +36,7 @@ import {
   Redo2,
   RotateCcw,
   Search,
+  Sliders,
   Sparkles,
   Trash2,
   Type,
@@ -343,7 +347,14 @@ export const CoverageNotesTab: React.FC = () => {
   const [poiMinZoom, setPoiMinZoom] = useState<number>(
     initialSvPrefs.poiMinZoom
   );
+  const [roadNameMinZoom, setRoadNameMinZoom] = useState<number>(
+    initialSvPrefs.roadNameMinZoom ?? 10
+  );
+  const [directionMinZoom, setDirectionMinZoom] = useState<number>(
+    initialSvPrefs.directionMinZoom ?? 6
+  );
   const [hideAllAnnotations, setHideAllAnnotations] = useState<boolean>(false);
+  const [showInspectorDetails, setShowInspectorDetails] = useState<boolean>(false);
 
   useEffect(() => {
     saveSvCoverageStylePrefs({
@@ -352,6 +363,8 @@ export const CoverageNotesTab: React.FC = () => {
       visible: showOfficialCoverage,
       sideLineMinZoom,
       poiMinZoom,
+      roadNameMinZoom,
+      directionMinZoom,
     });
   }, [
     svLineColor,
@@ -359,6 +372,8 @@ export const CoverageNotesTab: React.FC = () => {
     showOfficialCoverage,
     sideLineMinZoom,
     poiMinZoom,
+    roadNameMinZoom,
+    directionMinZoom,
   ]);
 
   // Default tool is 'select' (Select / Edit), placed first and slightly highlighted
@@ -2019,7 +2034,7 @@ export const CoverageNotesTab: React.FC = () => {
       ? 'w-full'
       : 'w-full lg:w-[460px] xl:w-[520px]';
 
-  // Side lines and POIs are only rendered when zoomed in enough (or when actively filtered)
+  // Side lines, POIs, road names & driving directions zoom gating
   const shouldRenderSideLines =
     mapZoom >= sideLineMinZoom ||
     selectedFilterSideLineTagId !== 'all' ||
@@ -2027,6 +2042,12 @@ export const CoverageNotesTab: React.FC = () => {
 
   const shouldRenderPois =
     mapZoom >= poiMinZoom || explicitFilterPoiTagIds.length > 0;
+
+  // Directions have a significantly more generous zoom threshold (default 6) as they are small and useful
+  const shouldRenderDirections = mapZoom >= directionMinZoom;
+
+  // Road names show only when sufficiently zoomed in (default 10)
+  const shouldRenderRoadNames = mapZoom >= roadNameMinZoom;
 
   return (
     <div className="h-[calc(100dvh-3.5rem)] flex flex-col bg-slate-950 text-slate-100 select-none overflow-hidden">
@@ -2739,7 +2760,7 @@ export const CoverageNotesTab: React.FC = () => {
                           />
                         ))}
 
-                        {chevrons.length > 0 && (
+                        {chevrons.length > 0 && (shouldRenderDirections || isSelected) && (
                           <Polyline
                             positions={chevrons}
                             pathOptions={{
@@ -2886,7 +2907,7 @@ export const CoverageNotesTab: React.FC = () => {
                             </React.Fragment>
                           ))}
 
-                        {ann.label && (
+                        {ann.label && (shouldRenderRoadNames || isSelected) && (
                           <Marker
                             position={midPt}
                             icon={L.divIcon({
@@ -3239,7 +3260,7 @@ export const CoverageNotesTab: React.FC = () => {
                     type="text"
                     value={booleanQuery}
                     onChange={(e) => setBooleanQuery(e.target.value)}
-                    placeholder="e.g. (tag1 AND tag2) OR tag3, year:2012 AND NOT tag4..."
+                    placeholder="(tag1 AND tag2) OR tag3, year:2012 AND NOT tag4..."
                     className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-xs font-mono outline-none focus:border-indigo-500"
                   />
                   <div className="text-[10px] text-slate-500 leading-relaxed">
@@ -3605,7 +3626,7 @@ export const CoverageNotesTab: React.FC = () => {
 
                   {poiTags.length === 0 ? (
                     <div className="text-[11px] text-slate-500 bg-slate-950 p-2 rounded border border-slate-800">
-                      No POI tags created yet. Create POI tags (e.g. for towns, intersections, bridges) to filter or selectively plot POIs in generated maps.
+                      No POI tags created yet. Add POI tags below to tag locations and filter or plot them on generated maps.
                     </div>
                   ) : (
                     <div className="bg-slate-950 p-2 rounded border border-slate-800 max-h-36 overflow-y-auto space-y-0.5">
@@ -3650,6 +3671,47 @@ export const CoverageNotesTab: React.FC = () => {
                       </button>
                     </div>
                   </form>
+                </div>
+
+                {/* 6. Map Zoom Visibility Thresholds */}
+                <div className="border-t border-slate-800 pt-2.5 space-y-2">
+                  <div className="text-[11px] font-bold text-slate-300">
+                    MAP DETAIL VISIBILITY ZOOM THRESHOLDS
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-400 bg-slate-950 p-2 rounded border border-slate-800">
+                    <div className="space-y-1">
+                      <div className="flex justify-between">
+                        <span>Road Names:</span>
+                        <span className="text-white font-mono">Zoom ≥ {roadNameMinZoom}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={6}
+                        max={14}
+                        step={1}
+                        value={roadNameMinZoom}
+                        onChange={(e) => setRoadNameMinZoom(Number(e.target.value))}
+                        title="Minimum map zoom to display road names (always visible when road is selected)"
+                        className="w-full accent-indigo-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex justify-between">
+                        <span>Driving Arrows:</span>
+                        <span className="text-white font-mono">Zoom ≥ {directionMinZoom}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={3}
+                        max={12}
+                        step={1}
+                        value={directionMinZoom}
+                        onChange={(e) => setDirectionMinZoom(Number(e.target.value))}
+                        title="Minimum map zoom to display driving direction chevrons (always visible when road is selected)"
+                        className="w-full accent-indigo-500"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -3896,686 +3958,720 @@ export const CoverageNotesTab: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Automatically Extracted Official Metadata Spans along Road Stretch */}
-                {selectedAnnotation.autoMetaSpans &&
-                  selectedAnnotation.autoMetaSpans.length > 0 && (
-                    <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 space-y-1.5">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase">
-                        Auto-Detected Official Coverage Spans (
-                        {selectedAnnotation.autoMetaSpans.length})
-                      </div>
-                      <div className="space-y-1 max-h-28 overflow-y-auto">
-                        {selectedAnnotation.autoMetaSpans.map((sp, i) => (
-                          <div
-                            key={`${sp.panoId}-${i}`}
-                            className="flex flex-wrap items-center justify-between gap-1 text-[10px] bg-slate-900 px-2 py-1 rounded border border-slate-800"
-                          >
-                            <span className="font-bold text-slate-300">
-                              {Math.round(sp.startFrac * 100)}%–
-                              {Math.round(sp.endFrac * 100)}%
-                            </span>
-                            <span className="text-emerald-400 font-bold">
-                              {sp.captureDate || 'Unknown Date'}
-                              {sp.season ? ` · ${sp.season}` : ''}
-                            </span>
-                            <span className="text-indigo-300 font-bold">
-                              {sp.cameraGen || ''}
-                            </span>
-                            <span className="text-slate-400 truncate max-w-[160px]">
-                              {[sp.regionName, sp.countryCode]
-                                .filter(Boolean)
-                                .join(', ')}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                {/* Label & Custom Color Input */}
-                <div className="space-y-1">
-                  <label className="block text-[11px] font-bold text-slate-300">
-                    Label & Colour
-                  </label>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="color"
-                      value={selectedAnnotation.color || '#38bdf8'}
-                      onChange={(e) =>
-                        updateSelectedAnnotation({ color: e.target.value })
-                      }
-                      title="Change annotation colour"
-                      className="w-7 h-7 rounded bg-transparent border-0 cursor-pointer shrink-0"
-                    />
-                    <input
-                      type="text"
-                      value={selectedAnnotation.label || ''}
-                      onChange={(e) =>
-                        updateSelectedAnnotation({ label: e.target.value })
-                      }
-                      placeholder="Label..."
-                      className="flex-1 px-2.5 py-1.5 rounded bg-slate-950 border border-slate-800 text-white outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Driving Direction Arrows */}
-                {(selectedAnnotation.type === 'road-stretch' ||
-                  selectedAnnotation.type === 'freehand') && (
-                  <div className="space-y-1">
-                    <label className="block text-[11px] font-bold text-slate-300">
-                      Driving Direction Arrows
-                    </label>
-                    <div className="grid grid-cols-4 gap-1">
-                      {(
-                        [
-                          { id: 'forward', label: 'A → B' },
-                          { id: 'reverse', label: 'B ← A' },
-                          { id: 'both', label: 'A ↔ B' },
-                          { id: 'none', label: 'None' },
-                        ] as const
-                      ).map((d) => (
-                        <button
-                          key={d.id}
-                          type="button"
-                          onClick={() =>
-                            updateSelectedAnnotation({ direction: d.id })
-                          }
-                          className={`py-1 rounded font-bold text-[11px] border cursor-pointer ${
-                            (selectedAnnotation.direction || 'none') === d.id
-                              ? 'bg-indigo-600 border-indigo-400 text-white'
-                              : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          {d.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Points of Interest (POIs) Manager on Road Stretch */}
-                {selectedAnnotation.type === 'road-stretch' &&
-                  selectedAnnotation.points && (
-                    <div className="space-y-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-slate-300">
-                          POINTS OF INTEREST (
-                          {(selectedAnnotation.roadPois || []).length})
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const existing = selectedAnnotation.roadPois || [];
-                            const frac = 0.5;
-                            const pos = interpolatePointOnPolylineByFraction(
-                              selectedAnnotation.points!,
-                              frac
-                            );
-                            const nextPoi: RoadPointOfInterest = {
-                              id: `poi-${Date.now()}`,
-                              label: `P${existing.length + 1}`,
-                              frac,
-                              position: pos,
-                              color: activeColor,
-                              tagIds: [],
-                              autoSelectedTagIds: [],
-                            };
-                            updateSelectedAnnotation({
-                              roadPois: [...existing, nextPoi].sort(
-                                (a, b) => a.frac - b.frac
-                              ),
-                            });
-                          }}
-                          className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold cursor-pointer"
-                        >
-                          +Add POI
-                        </button>
-                      </div>
-
-                      {(selectedAnnotation.roadPois || []).length === 0 ? (
-                        <div className="text-[10px] text-slate-500">
-                          Use the "Road POI" tool to click on this road stretch,
-                          or click "+Add POI" above.
-                        </div>
-                      ) : (
-                        <div className="space-y-1.5">
-                          {(selectedAnnotation.roadPois || []).map((poi) => (
-                            <div
-                              key={poi.id}
-                              className="p-2 rounded bg-slate-900 border border-slate-800 space-y-1.5 text-[11px]"
-                            >
-                              <div className="flex items-center gap-1.5">
-                                <input
-                                  type="color"
-                                  value={poi.color || '#ffffff'}
-                                  onChange={(e) => {
-                                    const next = (
-                                      selectedAnnotation.roadPois || []
-                                    ).map((p) =>
-                                      p.id === poi.id
-                                        ? { ...p, color: e.target.value }
-                                        : p
-                                    );
-                                    updateSelectedAnnotation({ roadPois: next });
-                                  }}
-                                  className="w-4 h-4 rounded bg-transparent border-0 cursor-pointer"
-                                />
-                                <input
-                                  type="text"
-                                  value={poi.label}
-                                  onChange={(e) => {
-                                    const next = (
-                                      selectedAnnotation.roadPois || []
-                                    ).map((p) =>
-                                      p.id === poi.id
-                                        ? { ...p, label: e.target.value }
-                                        : p
-                                    );
-                                    updateSelectedAnnotation({ roadPois: next });
-                                  }}
-                                  placeholder="POI label..."
-                                  className="flex-1 px-1.5 py-0.5 rounded bg-slate-950 border border-slate-700 text-white text-[11px] outline-none"
-                                />
-                                <span className="text-[10px] text-slate-400">
-                                  {Math.round(poi.frac * 100)}%
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const next = (
-                                      selectedAnnotation.roadPois || []
-                                    ).filter((p) => p.id !== poi.id);
-                                    updateSelectedAnnotation({ roadPois: next });
-                                  }}
-                                  className="text-slate-500 hover:text-rose-400 cursor-pointer"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                              <input
-                                type="range"
-                                min={0}
-                                max={1}
-                                step={0.01}
-                                value={poi.frac}
-                                onChange={(e) => {
-                                  const f = Number(e.target.value);
-                                  const pos =
-                                    interpolatePointOnPolylineByFraction(
-                                      selectedAnnotation.points!,
-                                      f
-                                    );
-                                  const next = (
-                                    selectedAnnotation.roadPois || []
-                                  )
-                                    .map((p) =>
-                                      p.id === poi.id
-                                        ? { ...p, frac: f, position: pos }
-                                        : p
-                                    )
-                                    .sort((a, b) => a.frac - b.frac);
-                                  updateSelectedAnnotation({ roadPois: next });
-                                }}
-                                className="w-full accent-indigo-500"
-                              />
-                              {poiTags.length > 0 && (
-                                <div className="pt-1 border-t border-slate-800/80">
-                                  <div className="text-[10px] text-slate-400 mb-1">
-                                    POI Tags:
-                                  </div>
-                                  <div className="max-h-24 overflow-y-auto space-y-0.5">
-                                    {renderPoiTagTreeNodes(
-                                      null,
-                                      0,
-                                      'assign-poi',
-                                      poi
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                {/* Road Stretch Side Lines Manager (Nameable & Re-colourable after creation) */}
-                {selectedAnnotation.type === 'road-stretch' && (
-                  <div className="space-y-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-slate-300">
-                        SIDE LINES ({(selectedAnnotation.sideLines || []).length})
-                      </span>
-                      {sideLineTags.length > 0 && (
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const tagId =
-                                activeSideLineTagId || sideLineTags[0].id;
-                              const nextSl: RoadSideLineAttachment = {
-                                id: `sl-${Date.now()}`,
-                                sideLineTagId: tagId,
-                                side: 'left',
-                                startFrac: 0,
-                                endFrac: 1,
-                              };
-                              updateSelectedAnnotation({
-                                sideLines: [
-                                  ...(selectedAnnotation.sideLines || []),
-                                  nextSl,
-                                ],
-                              });
-                            }}
-                            className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold cursor-pointer"
-                          >
-                            +Left Side
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const tagId =
-                                activeSideLineTagId || sideLineTags[0].id;
-                              const nextSl: RoadSideLineAttachment = {
-                                id: `sl-${Date.now()}`,
-                                sideLineTagId: tagId,
-                                side: 'right',
-                                startFrac: 0,
-                                endFrac: 1,
-                              };
-                              updateSelectedAnnotation({
-                                sideLines: [
-                                  ...(selectedAnnotation.sideLines || []),
-                                  nextSl,
-                                ],
-                              });
-                            }}
-                            className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold cursor-pointer"
-                          >
-                            +Right Side
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {(selectedAnnotation.sideLines || []).map((sl) => {
-                      const def = sideLineTagById.get(sl.sideLineTagId);
-                      const effectiveColor =
-                        sl.customColor || def?.color || '#ffffff';
-                      const pois = selectedAnnotation.roadPois || [];
-                      const [effStart, effEnd] = resolveSideLineFractions(
-                        sl,
-                        pois
-                      );
-
-                      return (
-                        <div
-                          key={sl.id}
-                          className="p-2 rounded bg-slate-900 border border-slate-800 space-y-2 text-[11px]"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <select
-                              value={sl.sideLineTagId}
-                              onChange={(e) => {
-                                const next = (
-                                  selectedAnnotation.sideLines || []
-                                ).map((item) =>
-                                  item.id === sl.id
-                                    ? { ...item, sideLineTagId: e.target.value }
-                                    : item
-                                );
-                                updateSelectedAnnotation({ sideLines: next });
-                              }}
-                              className="bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-white font-bold flex-1 min-w-0"
-                              style={{
-                                borderLeft: `4px solid ${effectiveColor}`,
-                              }}
-                            >
-                              {sideLineTags.map((t) => (
-                                <option key={t.id} value={t.id}>
-                                  {formatSideLineHierarchicalLabel(t)}
-                                </option>
-                              ))}
-                            </select>
-
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const next = (
-                                    selectedAnnotation.sideLines || []
-                                  ).map((item) =>
-                                    item.id === sl.id
-                                      ? {
-                                          ...item,
-                                          side:
-                                            item.side === 'left'
-                                              ? ('right' as const)
-                                              : ('left' as const),
-                                        }
-                                      : item
-                                  );
-                                  updateSelectedAnnotation({ sideLines: next });
-                                }}
-                                className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[10px] cursor-pointer"
-                              >
-                                Side: {sl.side.toUpperCase()}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const next = (
-                                    selectedAnnotation.sideLines || []
-                                  ).filter((item) => item.id !== sl.id);
-                                  updateSelectedAnnotation({ sideLines: next });
-                                }}
-                                className="text-slate-500 hover:text-rose-400 cursor-pointer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Custom Name / Label & Custom Colour Override for this Side Line */}
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="color"
-                              value={effectiveColor}
-                              onChange={(e) => {
-                                const next = (
-                                  selectedAnnotation.sideLines || []
-                                ).map((item) =>
-                                  item.id === sl.id
-                                    ? { ...item, customColor: e.target.value }
-                                    : item
-                                );
-                                updateSelectedAnnotation({ sideLines: next });
-                              }}
-                              title="Re-colour this side line"
-                              className="w-5 h-5 rounded bg-transparent border-0 cursor-pointer shrink-0"
-                            />
-                            <input
-                              type="text"
-                              value={sl.label ?? ''}
-                              onChange={(e) => {
-                                const next = (
-                                  selectedAnnotation.sideLines || []
-                                ).map((item) =>
-                                  item.id === sl.id
-                                    ? { ...item, label: e.target.value }
-                                    : item
-                                );
-                                updateSelectedAnnotation({ sideLines: next });
-                              }}
-                              placeholder={
-                                def
-                                  ? `Custom name (default: ${def.name})...`
-                                  : 'Side line name...'
-                              }
-                              className="flex-1 px-2 py-0.5 rounded bg-slate-950 border border-slate-700 text-white text-[11px] outline-none"
-                            />
-                            {sl.customColor && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const next = (
-                                    selectedAnnotation.sideLines || []
-                                  ).map((item) =>
-                                    item.id === sl.id
-                                      ? { ...item, customColor: undefined }
-                                      : item
-                                  );
-                                  updateSelectedAnnotation({ sideLines: next });
-                                }}
-                                title="Reset to tag default colour"
-                                className="text-[10px] text-slate-400 hover:text-white cursor-pointer"
-                              >
-                                Reset
-                              </button>
-                            )}
-                          </div>
-
-                          {pois.length > 0 && (
-                            <div className="grid grid-cols-2 gap-1.5 text-[10px]">
-                              <div>
-                                <span className="text-slate-400 block mb-0.5">
-                                  From Boundary:
-                                </span>
-                                <select
-                                  value={
-                                    sl.startPoiId
-                                      ? `poi:${sl.startPoiId}`
-                                      : sl.startFrac === 0
-                                      ? 'start'
-                                      : 'custom'
-                                  }
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    const next = (
-                                      selectedAnnotation.sideLines || []
-                                    ).map((item) => {
-                                      if (item.id !== sl.id) return item;
-                                      if (val === 'start') {
-                                        return {
-                                          ...item,
-                                          startPoiId: undefined,
-                                          startFrac: 0,
-                                        };
-                                      }
-                                      if (val.startsWith('poi:')) {
-                                        const pid = val.slice(4);
-                                        const found = pois.find(
-                                          (p) => p.id === pid
-                                        );
-                                        return {
-                                          ...item,
-                                          startPoiId: pid,
-                                          startFrac: found
-                                            ? found.frac
-                                            : item.startFrac,
-                                        };
-                                      }
-                                      return { ...item, startPoiId: undefined };
-                                    });
-                                    updateSelectedAnnotation({ sideLines: next });
-                                  }}
-                                  className="w-full bg-slate-950 border border-slate-700 rounded px-1 py-0.5 text-white"
-                                >
-                                  <option value="start">Road Start (0%)</option>
-                                  {pois.map((p) => (
-                                    <option key={p.id} value={`poi:${p.id}`}>
-                                      POI: {p.label} ({Math.round(p.frac * 100)}%)
-                                    </option>
-                                  ))}
-                                  <option value="custom">
-                                    Custom % ({Math.round(effStart * 100)}%)
-                                  </option>
-                                </select>
-                              </div>
-
-                              <div>
-                                <span className="text-slate-400 block mb-0.5">
-                                  To Boundary:
-                                </span>
-                                <select
-                                  value={
-                                    sl.endPoiId
-                                      ? `poi:${sl.endPoiId}`
-                                      : sl.endFrac === 1
-                                      ? 'end'
-                                      : 'custom'
-                                  }
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    const next = (
-                                      selectedAnnotation.sideLines || []
-                                    ).map((item) => {
-                                      if (item.id !== sl.id) return item;
-                                      if (val === 'end') {
-                                        return {
-                                          ...item,
-                                          endPoiId: undefined,
-                                          endFrac: 1,
-                                        };
-                                      }
-                                      if (val.startsWith('poi:')) {
-                                        const pid = val.slice(4);
-                                        const found = pois.find(
-                                          (p) => p.id === pid
-                                        );
-                                        return {
-                                          ...item,
-                                          endPoiId: pid,
-                                          endFrac: found
-                                            ? found.frac
-                                            : item.endFrac,
-                                        };
-                                      }
-                                      return { ...item, endPoiId: undefined };
-                                    });
-                                    updateSelectedAnnotation({ sideLines: next });
-                                  }}
-                                  className="w-full bg-slate-950 border border-slate-700 rounded px-1 py-0.5 text-white"
-                                >
-                                  <option value="end">Road End (100%)</option>
-                                  {pois.map((p) => (
-                                    <option key={p.id} value={`poi:${p.id}`}>
-                                      POI: {p.label} ({Math.round(p.frac * 100)}%)
-                                    </option>
-                                  ))}
-                                  <option value="custom">
-                                    Custom % ({Math.round(effEnd * 100)}%)
-                                  </option>
-                                </select>
-                              </div>
-                            </div>
-                          )}
-
-                          <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                            <span>Start {Math.round(effStart * 100)}%</span>
-                            <input
-                              type="range"
-                              min={0}
-                              max={0.98}
-                              step={0.01}
-                              value={effStart}
-                              onChange={(e) => {
-                                const v = Math.min(
-                                  Number(e.target.value),
-                                  effEnd - 0.01
-                                );
-                                const next = (
-                                  selectedAnnotation.sideLines || []
-                                ).map((item) =>
-                                  item.id === sl.id
-                                    ? {
-                                        ...item,
-                                        startPoiId: undefined,
-                                        startFrac: v,
-                                      }
-                                    : item
-                                );
-                                updateSelectedAnnotation({ sideLines: next });
-                              }}
-                              className="flex-1 accent-indigo-500"
-                            />
-                            <span>End {Math.round(effEnd * 100)}%</span>
-                            <input
-                              type="range"
-                              min={0.02}
-                              max={1}
-                              step={0.01}
-                              value={effEnd}
-                              onChange={(e) => {
-                                const v = Math.max(
-                                  Number(e.target.value),
-                                  effStart + 0.01
-                                );
-                                const next = (
-                                  selectedAnnotation.sideLines || []
-                                ).map((item) =>
-                                  item.id === sl.id
-                                    ? {
-                                        ...item,
-                                        endPoiId: undefined,
-                                        endFrac: v,
-                                      }
-                                    : item
-                                );
-                                updateSelectedAnnotation({ sideLines: next });
-                              }}
-                              className="flex-1 accent-indigo-500"
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Sketch Canvas & POI Tags for Pins */}
-                {selectedAnnotation.type === 'pin' && (
-                  <>
-                    <PinSketchCanvas
-                      value={selectedAnnotation.sketchDataUrl}
-                      onChange={(dataUrl) =>
-                        updateSelectedAnnotation({ sketchDataUrl: dataUrl })
-                      }
-                    />
-                    {poiTags.length > 0 && (
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-300">
-                          Assigned POI Tags
-                        </label>
-                        <div className="bg-slate-950 p-2 rounded border border-slate-800 max-h-28 overflow-y-auto">
-                          {renderPoiTagTreeNodes(null, 0, 'assign-pin')}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* Assign Tags from Tag Tree (with Auto-Selected Ancestor Propagation) */}
-                <div className="space-y-1">
+                {/* 1. Road Notes Section FRONT & CENTER at the Top */}
+                <div className="space-y-1.5 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
                   <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-bold text-slate-300">
-                      Assigned Road Tags
+                    <label className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5" />
+                      ROAD NOTES
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => setShowTagManagerPanel(true)}
-                      className="text-[10px] text-indigo-400 hover:underline cursor-pointer"
-                    >
-                      Open Tags & Filters
-                    </button>
+                    {selectedAnnotation.notes && (
+                      <span className="text-[10px] text-emerald-400 font-bold">
+                        Saved
+                      </span>
+                    )}
                   </div>
-                  {tagTree.length === 0 ? (
-                    <div className="text-[11px] text-slate-500">
-                      Open "Tags & Filters" to create your Tag Tree.
-                    </div>
-                  ) : (
-                    <div className="bg-slate-950 p-2 rounded border border-slate-800 max-h-36 overflow-y-auto">
-                      {renderTagTreeNodes(null, 0, 'assign')}
-                    </div>
-                  )}
-                </div>
-
-                {/* Notes */}
-                <div className="space-y-1">
-                  <label className="block text-[11px] font-bold text-slate-300">
-                    Notes
-                  </label>
                   <textarea
-                    rows={3}
+                    rows={4}
                     value={selectedAnnotation.notes || ''}
                     onChange={(e) =>
                       updateSelectedAnnotation({ notes: e.target.value })
                     }
-                    placeholder="Notes..."
-                    className="w-full px-2.5 py-1.5 rounded bg-slate-950 border border-slate-800 text-white outline-none focus:border-indigo-500 resize-y"
+                    placeholder="Road notes, observations, seasonal clues, poles, landscape..."
+                    className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white outline-none focus:border-indigo-500 resize-y text-xs leading-relaxed"
                   />
+                </div>
+
+                {/* 2. Expandable Tagging, Direction, Side Lines & Details Drawer */}
+                <div className="border border-slate-800 rounded-lg overflow-hidden bg-slate-950/60">
+                  <button
+                    type="button"
+                    onClick={() => setShowInspectorDetails((v) => !v)}
+                    className="w-full px-3 py-2 bg-slate-950 hover:bg-slate-900/80 flex items-center justify-between text-left font-bold text-slate-300 text-xs cursor-pointer"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Sliders className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Tagging, Direction & Side Lines</span>
+                    </div>
+                    <div className="flex items-center gap-1 text-[11px] text-slate-400">
+                      <span>{showInspectorDetails ? 'Collapse' : 'Expand'}</span>
+                      {showInspectorDetails ? (
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      )}
+                    </div>
+                  </button>
+
+                  {showInspectorDetails && (
+                    <div className="p-3 space-y-3 bg-slate-900/90 border-t border-slate-800">
+                      {/* Label & Custom Color Input */}
+                      <div className="space-y-1">
+                        <label className="block text-[11px] font-bold text-slate-300">
+                          Label & Colour
+                        </label>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="color"
+                            value={selectedAnnotation.color || '#38bdf8'}
+                            onChange={(e) =>
+                              updateSelectedAnnotation({ color: e.target.value })
+                            }
+                            title="Change annotation colour"
+                            className="w-7 h-7 rounded bg-transparent border-0 cursor-pointer shrink-0"
+                          />
+                          <input
+                            type="text"
+                            value={selectedAnnotation.label || ''}
+                            onChange={(e) =>
+                              updateSelectedAnnotation({ label: e.target.value })
+                            }
+                            placeholder="Label..."
+                            className="flex-1 px-2.5 py-1.5 rounded bg-slate-950 border border-slate-800 text-white outline-none focus:border-indigo-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Driving Direction Arrows */}
+                      {(selectedAnnotation.type === 'road-stretch' ||
+                        selectedAnnotation.type === 'freehand') && (
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-bold text-slate-300">
+                            Driving Direction Arrows
+                          </label>
+                          <div className="grid grid-cols-4 gap-1">
+                            {(
+                              [
+                                { id: 'forward', label: 'A → B' },
+                                { id: 'reverse', label: 'B ← A' },
+                                { id: 'both', label: 'A ↔ B' },
+                                { id: 'none', label: 'None' },
+                              ] as const
+                            ).map((d) => (
+                              <button
+                                key={d.id}
+                                type="button"
+                                onClick={() =>
+                                  updateSelectedAnnotation({ direction: d.id })
+                                }
+                                className={`py-1 rounded font-bold text-[11px] border cursor-pointer ${
+                                  (selectedAnnotation.direction || 'none') === d.id
+                                    ? 'bg-indigo-600 border-indigo-400 text-white'
+                                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                {d.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Points of Interest (POIs) Manager on Road Stretch */}
+                      {selectedAnnotation.type === 'road-stretch' &&
+                        selectedAnnotation.points && (
+                          <div className="space-y-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-bold text-slate-300">
+                                POINTS OF INTEREST (
+                                {(selectedAnnotation.roadPois || []).length})
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const existing = selectedAnnotation.roadPois || [];
+                                  const frac = 0.5;
+                                  const pos = interpolatePointOnPolylineByFraction(
+                                    selectedAnnotation.points!,
+                                    frac
+                                  );
+                                  const nextPoi: RoadPointOfInterest = {
+                                    id: `poi-${Date.now()}`,
+                                    label: `P${existing.length + 1}`,
+                                    frac,
+                                    position: pos,
+                                    color: activeColor,
+                                    tagIds: [],
+                                    autoSelectedTagIds: [],
+                                  };
+                                  updateSelectedAnnotation({
+                                    roadPois: [...existing, nextPoi].sort(
+                                      (a, b) => a.frac - b.frac
+                                    ),
+                                  });
+                                }}
+                                className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold cursor-pointer"
+                              >
+                                +Add POI
+                              </button>
+                            </div>
+
+                            {(selectedAnnotation.roadPois || []).length === 0 ? (
+                              <div className="text-[10px] text-slate-500">
+                                Use the "Road POI" tool to click on this road stretch,
+                                or click "+Add POI" above.
+                              </div>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {(selectedAnnotation.roadPois || []).map((poi) => (
+                                  <div
+                                    key={poi.id}
+                                    className="p-2 rounded bg-slate-900 border border-slate-800 space-y-1.5 text-[11px]"
+                                  >
+                                    <div className="flex items-center gap-1.5">
+                                      <input
+                                        type="color"
+                                        value={poi.color || '#ffffff'}
+                                        onChange={(e) => {
+                                          const next = (
+                                            selectedAnnotation.roadPois || []
+                                          ).map((p) =>
+                                            p.id === poi.id
+                                              ? { ...p, color: e.target.value }
+                                              : p
+                                          );
+                                          updateSelectedAnnotation({ roadPois: next });
+                                        }}
+                                        className="w-4 h-4 rounded bg-transparent border-0 cursor-pointer"
+                                      />
+                                      <input
+                                        type="text"
+                                        value={poi.label}
+                                        onChange={(e) => {
+                                          const next = (
+                                            selectedAnnotation.roadPois || []
+                                          ).map((p) =>
+                                            p.id === poi.id
+                                              ? { ...p, label: e.target.value }
+                                              : p
+                                          );
+                                          updateSelectedAnnotation({ roadPois: next });
+                                        }}
+                                        placeholder="POI label..."
+                                        className="flex-1 px-1.5 py-0.5 rounded bg-slate-950 border border-slate-700 text-white text-[11px] outline-none"
+                                      />
+                                      <span className="text-[10px] text-slate-400">
+                                        {Math.round(poi.frac * 100)}%
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const next = (
+                                            selectedAnnotation.roadPois || []
+                                          ).filter((p) => p.id !== poi.id);
+                                          updateSelectedAnnotation({ roadPois: next });
+                                        }}
+                                        className="text-slate-500 hover:text-rose-400 cursor-pointer"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                    <input
+                                      type="range"
+                                      min={0}
+                                      max={1}
+                                      step={0.01}
+                                      value={poi.frac}
+                                      onChange={(e) => {
+                                        const f = Number(e.target.value);
+                                        const pos =
+                                          interpolatePointOnPolylineByFraction(
+                                            selectedAnnotation.points!,
+                                            f
+                                          );
+                                        const next = (
+                                          selectedAnnotation.roadPois || []
+                                        )
+                                          .map((p) =>
+                                            p.id === poi.id
+                                              ? { ...p, frac: f, position: pos }
+                                              : p
+                                          )
+                                          .sort((a, b) => a.frac - b.frac);
+                                        updateSelectedAnnotation({ roadPois: next });
+                                      }}
+                                      className="w-full accent-indigo-500"
+                                    />
+                                    {poiTags.length > 0 && (
+                                      <div className="pt-1 border-t border-slate-800/80">
+                                        <div className="text-[10px] text-slate-400 mb-1">
+                                          POI Tags:
+                                        </div>
+                                        <div className="max-h-24 overflow-y-auto space-y-0.5">
+                                          {renderPoiTagTreeNodes(
+                                            null,
+                                            0,
+                                            'assign-poi',
+                                            poi
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                      {/* Road Stretch Side Lines Manager */}
+                      {selectedAnnotation.type === 'road-stretch' && (
+                        <div className="space-y-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-slate-300">
+                              SIDE LINES ({(selectedAnnotation.sideLines || []).length})
+                            </span>
+                            {sideLineTags.length > 0 && (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const tagId =
+                                      activeSideLineTagId || sideLineTags[0].id;
+                                    const nextSl: RoadSideLineAttachment = {
+                                      id: `sl-${Date.now()}`,
+                                      sideLineTagId: tagId,
+                                      side: 'left',
+                                      startFrac: 0,
+                                      endFrac: 1,
+                                    };
+                                    updateSelectedAnnotation({
+                                      sideLines: [
+                                        ...(selectedAnnotation.sideLines || []),
+                                        nextSl,
+                                      ],
+                                    });
+                                  }}
+                                  className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold cursor-pointer"
+                                >
+                                  +Left Side
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const tagId =
+                                      activeSideLineTagId || sideLineTags[0].id;
+                                    const nextSl: RoadSideLineAttachment = {
+                                      id: `sl-${Date.now()}`,
+                                      sideLineTagId: tagId,
+                                      side: 'right',
+                                      startFrac: 0,
+                                      endFrac: 1,
+                                    };
+                                    updateSelectedAnnotation({
+                                      sideLines: [
+                                        ...(selectedAnnotation.sideLines || []),
+                                        nextSl,
+                                      ],
+                                    });
+                                  }}
+                                  className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold cursor-pointer"
+                                >
+                                  +Right Side
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {(selectedAnnotation.sideLines || []).map((sl) => {
+                            const def = sideLineTagById.get(sl.sideLineTagId);
+                            const effectiveColor =
+                              sl.customColor || def?.color || '#ffffff';
+                            const pois = selectedAnnotation.roadPois || [];
+                            const [effStart, effEnd] = resolveSideLineFractions(
+                              sl,
+                              pois
+                            );
+
+                            return (
+                              <div
+                                key={sl.id}
+                                className="p-2 rounded bg-slate-900 border border-slate-800 space-y-2 text-[11px]"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <select
+                                    value={sl.sideLineTagId}
+                                    onChange={(e) => {
+                                      const next = (
+                                        selectedAnnotation.sideLines || []
+                                      ).map((item) =>
+                                        item.id === sl.id
+                                          ? { ...item, sideLineTagId: e.target.value }
+                                          : item
+                                      );
+                                      updateSelectedAnnotation({ sideLines: next });
+                                    }}
+                                    className="bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-white font-bold flex-1 min-w-0"
+                                    style={{
+                                      borderLeft: `4px solid ${effectiveColor}`,
+                                    }}
+                                  >
+                                    {sideLineTags.map((t) => (
+                                      <option key={t.id} value={t.id}>
+                                        {formatSideLineHierarchicalLabel(t)}
+                                      </option>
+                                    ))}
+                                  </select>
+
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const next = (
+                                          selectedAnnotation.sideLines || []
+                                        ).map((item) =>
+                                          item.id === sl.id
+                                            ? {
+                                                ...item,
+                                                side:
+                                                  item.side === 'left'
+                                                    ? ('right' as const)
+                                                    : ('left' as const),
+                                              }
+                                            : item
+                                        );
+                                        updateSelectedAnnotation({ sideLines: next });
+                                      }}
+                                      className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[10px] cursor-pointer"
+                                    >
+                                      Side: {sl.side.toUpperCase()}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const next = (
+                                          selectedAnnotation.sideLines || []
+                                        ).filter((item) => item.id !== sl.id);
+                                        updateSelectedAnnotation({ sideLines: next });
+                                      }}
+                                      className="text-slate-500 hover:text-rose-400 cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Custom Name / Label & Custom Colour Override for this Side Line */}
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    type="color"
+                                    value={effectiveColor}
+                                    onChange={(e) => {
+                                      const next = (
+                                        selectedAnnotation.sideLines || []
+                                      ).map((item) =>
+                                        item.id === sl.id
+                                          ? { ...item, customColor: e.target.value }
+                                          : item
+                                      );
+                                      updateSelectedAnnotation({ sideLines: next });
+                                    }}
+                                    title="Re-colour this side line"
+                                    className="w-5 h-5 rounded bg-transparent border-0 cursor-pointer shrink-0"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={sl.label ?? ''}
+                                    onChange={(e) => {
+                                      const next = (
+                                        selectedAnnotation.sideLines || []
+                                      ).map((item) =>
+                                        item.id === sl.id
+                                          ? { ...item, label: e.target.value }
+                                          : item
+                                      );
+                                      updateSelectedAnnotation({ sideLines: next });
+                                    }}
+                                    placeholder={
+                                      def
+                                        ? `Custom name (default: ${def.name})...`
+                                        : 'Side line name...'
+                                    }
+                                    className="flex-1 px-2 py-0.5 rounded bg-slate-950 border border-slate-700 text-white text-[11px] outline-none"
+                                  />
+                                  {sl.customColor && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const next = (
+                                          selectedAnnotation.sideLines || []
+                                        ).map((item) =>
+                                          item.id === sl.id
+                                            ? { ...item, customColor: undefined }
+                                            : item
+                                        );
+                                        updateSelectedAnnotation({ sideLines: next });
+                                      }}
+                                      title="Reset to tag default colour"
+                                      className="text-[10px] text-slate-400 hover:text-white cursor-pointer"
+                                    >
+                                      Reset
+                                    </button>
+                                  )}
+                                </div>
+
+                                {pois.length > 0 && (
+                                  <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                                    <div>
+                                      <span className="text-slate-400 block mb-0.5">
+                                        From Boundary:
+                                      </span>
+                                      <select
+                                        value={
+                                          sl.startPoiId
+                                            ? `poi:${sl.startPoiId}`
+                                            : sl.startFrac === 0
+                                            ? 'start'
+                                            : 'custom'
+                                        }
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          const next = (
+                                            selectedAnnotation.sideLines || []
+                                          ).map((item) => {
+                                            if (item.id !== sl.id) return item;
+                                            if (val === 'start') {
+                                              return {
+                                                ...item,
+                                                startPoiId: undefined,
+                                                startFrac: 0,
+                                              };
+                                            }
+                                            if (val.startsWith('poi:')) {
+                                              const pid = val.slice(4);
+                                              const found = pois.find(
+                                                (p) => p.id === pid
+                                              );
+                                              return {
+                                                ...item,
+                                                startPoiId: pid,
+                                                startFrac: found
+                                                  ? found.frac
+                                                  : item.startFrac,
+                                              };
+                                            }
+                                            return { ...item, startPoiId: undefined };
+                                          });
+                                          updateSelectedAnnotation({ sideLines: next });
+                                        }}
+                                        className="w-full bg-slate-950 border border-slate-700 rounded px-1 py-0.5 text-white"
+                                      >
+                                        <option value="start">Road Start (0%)</option>
+                                        {pois.map((p) => (
+                                          <option key={p.id} value={`poi:${p.id}`}>
+                                            POI: {p.label} ({Math.round(p.frac * 100)}%)
+                                          </option>
+                                        ))}
+                                        <option value="custom">
+                                          Custom % ({Math.round(effStart * 100)}%)
+                                        </option>
+                                      </select>
+                                    </div>
+
+                                    <div>
+                                      <span className="text-slate-400 block mb-0.5">
+                                        To Boundary:
+                                      </span>
+                                      <select
+                                        value={
+                                          sl.endPoiId
+                                            ? `poi:${sl.endPoiId}`
+                                            : sl.endFrac === 1
+                                            ? 'end'
+                                            : 'custom'
+                                        }
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          const next = (
+                                            selectedAnnotation.sideLines || []
+                                          ).map((item) => {
+                                            if (item.id !== sl.id) return item;
+                                            if (val === 'end') {
+                                              return {
+                                                ...item,
+                                                endPoiId: undefined,
+                                                endFrac: 1,
+                                              };
+                                            }
+                                            if (val.startsWith('poi:')) {
+                                              const pid = val.slice(4);
+                                              const found = pois.find(
+                                                (p) => p.id === pid
+                                              );
+                                              return {
+                                                ...item,
+                                                endPoiId: pid,
+                                                endFrac: found
+                                                  ? found.frac
+                                                  : item.endFrac,
+                                              };
+                                            }
+                                            return { ...item, endPoiId: undefined };
+                                          });
+                                          updateSelectedAnnotation({ sideLines: next });
+                                        }}
+                                        className="w-full bg-slate-950 border border-slate-700 rounded px-1 py-0.5 text-white"
+                                      >
+                                        <option value="end">Road End (100%)</option>
+                                        {pois.map((p) => (
+                                          <option key={p.id} value={`poi:${p.id}`}>
+                                            POI: {p.label} ({Math.round(p.frac * 100)}%)
+                                          </option>
+                                        ))}
+                                        <option value="custom">
+                                          Custom % ({Math.round(effEnd * 100)}%)
+                                        </option>
+                                      </select>
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                                  <span>Start {Math.round(effStart * 100)}%</span>
+                                  <input
+                                    type="range"
+                                    min={0}
+                                    max={0.98}
+                                    step={0.01}
+                                    value={effStart}
+                                    onChange={(e) => {
+                                      const v = Math.min(
+                                        Number(e.target.value),
+                                        effEnd - 0.01
+                                      );
+                                      const next = (
+                                        selectedAnnotation.sideLines || []
+                                      ).map((item) =>
+                                        item.id === sl.id
+                                          ? {
+                                              ...item,
+                                              startPoiId: undefined,
+                                              startFrac: v,
+                                            }
+                                          : item
+                                      );
+                                      updateSelectedAnnotation({ sideLines: next });
+                                    }}
+                                    className="flex-1 accent-indigo-500"
+                                  />
+                                  <span>End {Math.round(effEnd * 100)}%</span>
+                                  <input
+                                    type="range"
+                                    min={0.02}
+                                    max={1}
+                                    step={0.01}
+                                    value={effEnd}
+                                    onChange={(e) => {
+                                      const v = Math.max(
+                                        Number(e.target.value),
+                                        effStart + 0.01
+                                      );
+                                      const next = (
+                                        selectedAnnotation.sideLines || []
+                                      ).map((item) =>
+                                        item.id === sl.id
+                                          ? {
+                                              ...item,
+                                              endPoiId: undefined,
+                                              endFrac: v,
+                                            }
+                                          : item
+                                      );
+                                      updateSelectedAnnotation({ sideLines: next });
+                                    }}
+                                    className="flex-1 accent-indigo-500"
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Sketch Canvas & POI Tags for Pins */}
+                      {selectedAnnotation.type === 'pin' && (
+                        <>
+                          <PinSketchCanvas
+                            value={selectedAnnotation.sketchDataUrl}
+                            onChange={(dataUrl) =>
+                              updateSelectedAnnotation({ sketchDataUrl: dataUrl })
+                            }
+                          />
+                          {poiTags.length > 0 && (
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-bold text-slate-300">
+                                Assigned POI Tags
+                              </label>
+                              <div className="bg-slate-950 p-2 rounded border border-slate-800 max-h-28 overflow-y-auto">
+                                {renderPoiTagTreeNodes(null, 0, 'assign-pin')}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {/* Assign Tags from Tag Tree */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-bold text-slate-300">
+                            Assigned Road Tags
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setShowTagManagerPanel(true)}
+                            className="text-[10px] text-indigo-400 hover:underline cursor-pointer"
+                          >
+                            Open Tags & Filters
+                          </button>
+                        </div>
+                        {tagTree.length === 0 ? (
+                          <div className="text-[11px] text-slate-500">
+                            Open "Tags & Filters" to create your Tag Tree.
+                          </div>
+                        ) : (
+                          <div className="bg-slate-950 p-2 rounded border border-slate-800 max-h-36 overflow-y-auto">
+                            {renderTagTreeNodes(null, 0, 'assign')}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Automatically Extracted Official Metadata Spans along Road Stretch */}
+                      {selectedAnnotation.autoMetaSpans &&
+                        selectedAnnotation.autoMetaSpans.length > 0 && (
+                          <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 space-y-1.5">
+                            <div className="text-[10px] font-bold text-slate-400 uppercase">
+                              Auto-Detected Official Coverage Spans (
+                              {selectedAnnotation.autoMetaSpans.length})
+                            </div>
+                            <div className="space-y-1 max-h-28 overflow-y-auto">
+                              {selectedAnnotation.autoMetaSpans.map((sp, i) => (
+                                <div
+                                  key={`${sp.panoId}-${i}`}
+                                  className="flex flex-wrap items-center justify-between gap-1 text-[10px] bg-slate-900 px-2 py-1 rounded border border-slate-800"
+                                >
+                                  <span className="font-bold text-slate-300">
+                                    {Math.round(sp.startFrac * 100)}%–
+                                    {Math.round(sp.endFrac * 100)}%
+                                  </span>
+                                  <span className="text-emerald-400 font-bold">
+                                    {sp.captureDate || 'Unknown Date'}
+                                    {sp.season ? ` · ${sp.season}` : ''}
+                                  </span>
+                                  <span className="text-indigo-300 font-bold">
+                                    {sp.cameraGen || ''}
+                                  </span>
+                                  <span className="text-slate-400 truncate max-w-[160px]">
+                                    {[sp.regionName, sp.countryCode]
+                                      .filter(Boolean)
+                                      .join(', ')}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

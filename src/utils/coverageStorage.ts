@@ -35,6 +35,8 @@ export interface SvCoverageStylePrefs {
   visible: boolean;
   sideLineMinZoom: number;
   poiMinZoom: number;
+  roadNameMinZoom: number;
+  directionMinZoom: number;
 }
 
 export function loadSvCoverageStylePrefs(): SvCoverageStylePrefs {
@@ -50,6 +52,10 @@ export function loadSvCoverageStylePrefs(): SvCoverageStylePrefs {
           typeof parsed.sideLineMinZoom === 'number' ? parsed.sideLineMinZoom : 9,
         poiMinZoom:
           typeof parsed.poiMinZoom === 'number' ? parsed.poiMinZoom : 9,
+        roadNameMinZoom:
+          typeof parsed.roadNameMinZoom === 'number' ? parsed.roadNameMinZoom : 10,
+        directionMinZoom:
+          typeof parsed.directionMinZoom === 'number' ? parsed.directionMinZoom : 6,
       };
     }
   } catch {
@@ -61,6 +67,8 @@ export function loadSvCoverageStylePrefs(): SvCoverageStylePrefs {
     visible: true,
     sideLineMinZoom: 9,
     poiMinZoom: 9,
+    roadNameMinZoom: 10,
+    directionMinZoom: 6,
   };
 }
 
