@@ -23,6 +23,7 @@ import {
   FolderPlus,
   GitBranch,
   GitCommitHorizontal,
+  Image as ImageIcon,
   Layers,
   MapPin,
   Maximize2,
@@ -47,6 +48,7 @@ import type {
   CoverageToolId,
   DrivingDirectionMode,
   OfficialStreetViewMetadata,
+  PoiTagDefinition,
   RoadPointOfInterest,
   RoadSideLineAttachment,
   RoadSnapSubMode,
@@ -59,11 +61,13 @@ import {
   loadCoverageNotebooks,
   loadCoverageTagTree,
   loadNotebookAnnotations,
+  loadPoiTags,
   loadSideLineTags,
   loadSvCoverageStylePrefs,
   saveCoverageNotebooks,
   saveCoverageTagTree,
   saveNotebookAnnotations,
+  savePoiTags,
   saveSideLineTags,
   saveSvCoverageStylePrefs,
   snapPathToOfficialCoveredRoad,
@@ -92,6 +96,10 @@ import {
   projectPointOntoRoadStretch,
   resolveSideLineFractions,
 } from './CoverageSubComponents';
+import {
+  CoverageMapGeneratorModal,
+  type MapViewportBounds,
+} from './CoverageMapGeneratorModal';
 
 const GOOGLE_ROADMAP_TILES =
   'https://mt1.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}';
@@ -131,6 +139,7 @@ const MapInteractionController: React.FC<{
   activeTool: CoverageToolId;
   roadSnapSubMode: RoadSnapSubMode;
   onZoomChange: (zoom: number) => void;
+  onBoundsChange: (bounds: MapViewportBounds) => void;
   onMapSingleClick: (lat: number, lng: number, altOrRight: boolean) => void;
   onMapDoubleClick: () => void;
   onFinishDragStroke: (pts: Array<[number, number]>) => void;
@@ -139,6 +148,7 @@ const MapInteractionController: React.FC<{
   activeTool,
   roadSnapSubMode,
   onZoomChange,
+  onBoundsChange,
   onMapSingleClick,
   onMapDoubleClick,
   onFinishDragStroke,
@@ -147,6 +157,32 @@ const MapInteractionController: React.FC<{
   const map = useMap();
   const isDraggingStrokeRef = useRef(false);
   const strokePtsRef = useRef<Array<[number, number]>>([]);
+
+  // Automatically invalidate Leaflet map size whenever the map container changes dimensions
+  // (e.g. when the right sidebar opens, closes, or changes width), preventing unrendered black areas.
+  useEffect(() => {
+    const container = map.getContainer();
+    if (!container || typeof ResizeObserver === 'undefined') return;
+
+    const syncSizeAndBounds = () => {
+      map.invalidateSize({ pan: false });
+      window.requestAnimationFrame(() => {
+        map.invalidateSize({ pan: false });
+        const b = map.getBounds();
+        onBoundsChange({
+          north: Math.round(b.getNorth() * 10000) / 10000,
+          south: Math.round(b.getSouth() * 10000) / 10000,
+          east: Math.round(b.getEast() * 10000) / 10000,
+          west: Math.round(b.getWest() * 10000) / 10000,
+        });
+      });
+    };
+
+    const ro = new ResizeObserver(syncSizeAndBounds);
+    ro.observe(container);
+    syncSizeAndBounds();
+    return () => ro.disconnect();
+  }, [map, onBoundsChange]);
 
   const isDragDrawingMode =
     activeTool === 'freehand' ||
@@ -169,6 +205,22 @@ const MapInteractionController: React.FC<{
   useMapEvents({
     zoomend: () => {
       onZoomChange(map.getZoom());
+      const b = map.getBounds();
+      onBoundsChange({
+        north: Math.round(b.getNorth() * 10000) / 10000,
+        south: Math.round(b.getSouth() * 10000) / 10000,
+        east: Math.round(b.getEast() * 10000) / 10000,
+        west: Math.round(b.getWest() * 10000) / 10000,
+      });
+    },
+    moveend: () => {
+      const b = map.getBounds();
+      onBoundsChange({
+        north: Math.round(b.getNorth() * 10000) / 10000,
+        south: Math.round(b.getSouth() * 10000) / 10000,
+        east: Math.round(b.getEast() * 10000) / 10000,
+        west: Math.round(b.getWest() * 10000) / 10000,
+      });
     },
     click: (e) => {
       const orig = e.originalEvent as MouseEvent;
@@ -252,12 +304,15 @@ export const CoverageNotesTab: React.FC = () => {
   const [undoStack, setUndoStack] = useState<CoverageAnnotation[][]>([]);
   const [redoStack, setRedoStack] = useState<CoverageAnnotation[][]>([]);
 
-  // Hierarchical Tag Tree & Hierarchical Side Line Tag Tree
+  // Hierarchical Tag Trees: Road Tags, Side Line Tags & POI Tags
   const [tagTree, setTagTree] = useState<CoverageTagNode[]>(() =>
     loadCoverageTagTree()
   );
   const [sideLineTags, setSideLineTags] = useState<SideLineTagDefinition[]>(() =>
     loadSideLineTags()
+  );
+  const [poiTags, setPoiTags] = useState<PoiTagDefinition[]>(() =>
+    loadPoiTags()
   );
   const [activeSideLineTagId, setActiveSideLineTagId] = useState<string>('');
 
@@ -270,7 +325,7 @@ export const CoverageNotesTab: React.FC = () => {
     }
   }, [sideLineTags, activeSideLineTagId]);
 
-  // Customizable Official SV Coverage Style + Side Line Min Zoom
+  // Customizable Official SV Coverage Style + Side Line & POI Min Zoom
   const initialSvPrefs = useMemo(() => loadSvCoverageStylePrefs(), []);
   const [baseLayer, setBaseLayer] = useState<'roadmap' | 'hybrid' | 'osm'>(
     'roadmap'
@@ -285,6 +340,9 @@ export const CoverageNotesTab: React.FC = () => {
   const [sideLineMinZoom, setSideLineMinZoom] = useState<number>(
     initialSvPrefs.sideLineMinZoom
   );
+  const [poiMinZoom, setPoiMinZoom] = useState<number>(
+    initialSvPrefs.poiMinZoom
+  );
   const [hideAllAnnotations, setHideAllAnnotations] = useState<boolean>(false);
 
   useEffect(() => {
@@ -293,8 +351,15 @@ export const CoverageNotesTab: React.FC = () => {
       opacity: coverageOpacity,
       visible: showOfficialCoverage,
       sideLineMinZoom,
+      poiMinZoom,
     });
-  }, [svLineColor, coverageOpacity, showOfficialCoverage, sideLineMinZoom]);
+  }, [
+    svLineColor,
+    coverageOpacity,
+    showOfficialCoverage,
+    sideLineMinZoom,
+    poiMinZoom,
+  ]);
 
   // Default tool is 'select' (Select / Edit), placed first and slightly highlighted
   const [activeTool, setActiveTool] = useState<CoverageToolId>('select');
@@ -307,8 +372,10 @@ export const CoverageNotesTab: React.FC = () => {
   const [autoDetectCarDir, setAutoDetectCarDir] = useState<boolean>(false);
   const [freehandArrowEnd, setFreehandArrowEnd] = useState<boolean>(false);
 
-  // Map Zoom & Live Drawing States
+  // Map Zoom, Viewport Bounds & Live Drawing States
   const [mapZoom, setMapZoom] = useState<number>(activeNotebook.defaultZoom);
+  const [currentViewportBounds, setCurrentViewportBounds] =
+    useState<MapViewportBounds | null>(null);
   const [draftPoints, setDraftPoints] = useState<Array<[number, number]>>([]);
   const [liveDragPoints, setLiveDragPoints] = useState<Array<[number, number]>>(
     []
@@ -318,7 +385,8 @@ export const CoverageNotesTab: React.FC = () => {
     string | null
   >(null);
 
-  // Split-Screen Street View Panorama States & Panel Size
+  // Split-Screen Street View Panorama States & Customizable / Auto-Expanding Panel Size
+  // Default to Google Embed (`useIframeFallback = true`) as preferred by user
   const [svMeta, setSvMeta] = useState<OfficialStreetViewMetadata | null>(null);
   const [svViewHeading, setSvViewHeading] = useState<number>(0);
   const [svViewPitch, setSvViewPitch] = useState<number>(0);
@@ -326,10 +394,19 @@ export const CoverageNotesTab: React.FC = () => {
   const [svStatusMessage, setSvStatusMessage] = useState<string | null>(null);
   const [showStreetViewPanel, setShowStreetViewPanel] =
     useState<boolean>(false);
-  const [useIframeFallback, setUseIframeFallback] = useState<boolean>(false);
-  const [sidebarSize, setSidebarSize] = useState<'compact' | 'standard' | 'wide'>(
-    'standard'
-  );
+  const [useIframeFallback, setUseIframeFallback] = useState<boolean>(true);
+  const [sidebarSize, setSidebarSize] = useState<
+    'compact' | 'standard' | 'wide' | 'custom'
+  >('standard');
+  const [customSidebarWidthPx, setCustomSidebarWidthPx] = useState<number>(560);
+  const preSvSidebarSizeRef = useRef<
+    'compact' | 'standard' | 'wide' | 'custom' | null
+  >(null);
+  const isResizingSidebarRef = useRef<boolean>(false);
+
+  // Meta Map Image Generator Modal State
+  const [showImageGeneratorModal, setShowImageGeneratorModal] =
+    useState<boolean>(false);
 
   // Tags & Filters Panel + Boolean Expression + Auto-Meta Filters
   const [showTagManagerPanel, setShowTagManagerPanel] =
@@ -341,6 +418,11 @@ export const CoverageNotesTab: React.FC = () => {
   const [autoSelectedFilterTagIds, setAutoSelectedFilterTagIds] = useState<
     string[]
   >([]);
+  const [selectedFilterPoiTagIds, setSelectedFilterPoiTagIds] = useState<
+    string[]
+  >([]);
+  const [autoSelectedFilterPoiTagIds, setAutoSelectedFilterPoiTagIds] =
+    useState<string[]>([]);
   const [filterCombinationMode, setFilterCombinationMode] = useState<
     'AND' | 'OR'
   >('AND');
@@ -368,6 +450,11 @@ export const CoverageNotesTab: React.FC = () => {
     useState<string>('');
   const [newSideLineTagColor, setNewSideLineTagColor] =
     useState<string>('#ef4444');
+
+  // POI Tag Creation Inputs (POI Tag Tree)
+  const [newPoiTagName, setNewPoiTagName] = useState<string>('');
+  const [newPoiTagParentId, setNewPoiTagParentId] = useState<string>('');
+  const [newPoiTagColor, setNewPoiTagColor] = useState<string>('#f59e0b');
 
   // Place Search & Fly Controller
   const [placeQuery, setPlaceQuery] = useState<string>('');
@@ -437,10 +524,15 @@ export const CoverageNotesTab: React.FC = () => {
     }
   };
 
+  // Close Street View and automatically restore previous panel width if it was auto-expanded
   const closeTemporaryStreetView = useCallback(() => {
     setShowStreetViewPanel(false);
     setSvMeta(null);
     setSvStatusMessage(null);
+    if (preSvSidebarSizeRef.current !== null) {
+      setSidebarSize(preSvSidebarSizeRef.current);
+      preSvSidebarSizeRef.current = null;
+    }
   }, []);
 
   const markedSphereForActivePano = useMemo(() => {
@@ -488,6 +580,16 @@ export const CoverageNotesTab: React.FC = () => {
     setSvLoading(true);
     setSvStatusMessage('Locating official Google Street View coverage...');
     setShowStreetViewPanel(true);
+
+    // Automatically expand sidebar to 'wide' when opening Street View if it wasn't already large
+    if (
+      sidebarSize !== 'wide' &&
+      !(sidebarSize === 'custom' && customSidebarWidthPx >= 640) &&
+      preSvSidebarSizeRef.current === null
+    ) {
+      preSvSidebarSizeRef.current = sidebarSize;
+      setSidebarSize('wide');
+    }
 
     let found = await fetchOfficialStreetViewAtLatLng(lat, lng, 350);
     if (!found) {
@@ -979,11 +1081,39 @@ export const CoverageNotesTab: React.FC = () => {
     [sideLineTagById]
   );
 
+  const poiTagById = useMemo(() => {
+    const map = new Map<string, PoiTagDefinition>();
+    for (const t of poiTags) map.set(t.id, t);
+    return map;
+  }, [poiTags]);
+
+  const formatPoiTagHierarchicalLabel = useCallback(
+    (tag: PoiTagDefinition): string => {
+      const parts = [tag.name];
+      let curr = tag;
+      const visited = new Set<string>([tag.id]);
+      while (curr.parentId && !visited.has(curr.parentId)) {
+        visited.add(curr.parentId);
+        const parent = poiTagById.get(curr.parentId);
+        if (!parent) break;
+        parts.unshift(parent.name);
+        curr = parent;
+      }
+      return parts.join(' › ');
+    },
+    [poiTagById]
+  );
+
   // Explicit filter tags (ignoring auto-selected parent tags when checking AND combinations)
   const explicitFilterTagIds = useMemo(() => {
     const autoSet = new Set(autoSelectedFilterTagIds);
     return selectedFilterTagIds.filter((id) => !autoSet.has(id));
   }, [selectedFilterTagIds, autoSelectedFilterTagIds]);
+
+  const explicitFilterPoiTagIds = useMemo(() => {
+    const autoSet = new Set(autoSelectedFilterPoiTagIds);
+    return selectedFilterPoiTagIds.filter((id) => !autoSet.has(id));
+  }, [selectedFilterPoiTagIds, autoSelectedFilterPoiTagIds]);
 
   const structuredAutoFilters: StructuredAutoMetaFilters = useMemo(
     () => ({
@@ -1011,6 +1141,7 @@ export const CoverageNotesTab: React.FC = () => {
   const hasAnyActiveFilter =
     booleanQuery.trim().length > 0 ||
     explicitFilterTagIds.length > 0 ||
+    explicitFilterPoiTagIds.length > 0 ||
     filterYear !== 'all' ||
     filterMonth !== 'all' ||
     filterSeason !== 'all' ||
@@ -1022,7 +1153,7 @@ export const CoverageNotesTab: React.FC = () => {
 
   /**
    * Evaluates all active filters (Boolean Expression, Tag Tree checkboxes with AND/OR,
-   * Auto-Metadata filters per road sub-span, and Side-Line Cardinal filters).
+   * POI Tag Tree checkboxes, Auto-Metadata filters per road sub-span, and Side-Line Cardinal filters).
    * Returns both the matching annotations AND the exact sub-polylines of road stretches
    * and side lines that match!
    */
@@ -1044,7 +1175,7 @@ export const CoverageNotesTab: React.FC = () => {
 
     return annotations
       .map((ann) => {
-        // 1. Check Tag Tree Checkbox Filter (explicit selections combined via AND or OR)
+        // 1. Check Road Tag Tree Checkbox Filter (explicit selections combined via AND or OR)
         if (explicitFilterTagIds.length > 0) {
           const annTagSet = new Set(ann.tagIds || []);
           const checkSingleTag = (filterTagId: string) => {
@@ -1059,6 +1190,24 @@ export const CoverageNotesTab: React.FC = () => {
               ? explicitFilterTagIds.every(checkSingleTag)
               : explicitFilterTagIds.some(checkSingleTag);
           if (!matchesTags) return null;
+        }
+
+        // 1b. Check POI Tag Tree Checkbox Filter
+        if (explicitFilterPoiTagIds.length > 0) {
+          const checkPoiTag = (filterPoiTagId: string) => {
+            const descIds = getDescendantIdsInclusive(filterPoiTagId, poiTags);
+            if ((ann.poiTagIds || []).some((id) => descIds.has(id))) {
+              return true;
+            }
+            return (ann.roadPois || []).some((p) =>
+              (p.tagIds || []).some((id) => descIds.has(id))
+            );
+          };
+          const matchesPoiTags =
+            filterCombinationMode === 'AND'
+              ? explicitFilterPoiTagIds.every(checkPoiTag)
+              : explicitFilterPoiTagIds.some(checkPoiTag);
+          if (!matchesPoiTags) return null;
         }
 
         // 2. Check Sub-Span Auto-Metadata + Boolean Query
@@ -1083,6 +1232,7 @@ export const CoverageNotesTab: React.FC = () => {
                 span,
                 tagTree,
                 sideLineTags,
+                poiTags,
               });
             }
             return true;
@@ -1117,6 +1267,7 @@ export const CoverageNotesTab: React.FC = () => {
               ann,
               tagTree,
               sideLineTags,
+              poiTags,
             })
           ) {
             return null;
@@ -1145,6 +1296,7 @@ export const CoverageNotesTab: React.FC = () => {
         const matchingSideSegments: Array<{
           id: string;
           color: string;
+          label?: string;
           points: Array<[number, number]>;
         }> = [];
 
@@ -1156,7 +1308,7 @@ export const CoverageNotesTab: React.FC = () => {
             return;
           }
           const slDef = sideLineTagById.get(sl.sideLineTagId);
-          const color = slDef?.color || '#f43f5e';
+          const color = sl.customColor || slDef?.color || '#f43f5e';
           const [resolvedStart, resolvedEnd] = resolveSideLineFractions(
             sl,
             ann.roadPois
@@ -1179,6 +1331,7 @@ export const CoverageNotesTab: React.FC = () => {
             matchingSideSegments.push({
               id: sl.id,
               color,
+              label: sl.label,
               points: offsetPts,
             });
             return;
@@ -1204,6 +1357,7 @@ export const CoverageNotesTab: React.FC = () => {
               matchingSideSegments.push({
                 id: `${sl.id}-${i}`,
                 color,
+                label: sl.label,
                 points: currentRun,
               });
               currentRun = [];
@@ -1215,6 +1369,7 @@ export const CoverageNotesTab: React.FC = () => {
             matchingSideSegments.push({
               id: `${sl.id}-end`,
               color,
+              label: sl.label,
               points: currentRun,
             });
           }
@@ -1236,6 +1391,7 @@ export const CoverageNotesTab: React.FC = () => {
           matchingSideSegments: Array<{
             id: string;
             color: string;
+            label?: string;
             points: Array<[number, number]>;
           }> | null;
         } => item !== null
@@ -1243,6 +1399,7 @@ export const CoverageNotesTab: React.FC = () => {
   }, [
     annotations,
     explicitFilterTagIds,
+    explicitFilterPoiTagIds,
     filterCombinationMode,
     booleanQuery,
     structuredAutoFilters,
@@ -1250,6 +1407,7 @@ export const CoverageNotesTab: React.FC = () => {
     cardinalDirectionFilter,
     tagTree,
     sideLineTags,
+    poiTags,
     sideLineTagById,
     mapZoom,
     filterYear,
@@ -1274,6 +1432,15 @@ export const CoverageNotesTab: React.FC = () => {
     setTagTree(next);
     saveCoverageTagTree(next);
     setNewTagName('');
+  };
+
+  const handleUpdateTagNode = (
+    tagId: string,
+    patch: Partial<CoverageTagNode>
+  ) => {
+    const next = tagTree.map((t) => (t.id === tagId ? { ...t, ...patch } : t));
+    setTagTree(next);
+    saveCoverageTagTree(next);
   };
 
   const handleDeleteTagNode = (tagId: string) => {
@@ -1301,6 +1468,17 @@ export const CoverageNotesTab: React.FC = () => {
     setNewSideLineTagName('');
   };
 
+  const handleUpdateSideLineTag = (
+    id: string,
+    patch: Partial<SideLineTagDefinition>
+  ) => {
+    const next = sideLineTags.map((t) =>
+      t.id === id ? { ...t, ...patch } : t
+    );
+    setSideLineTags(next);
+    saveSideLineTags(next);
+  };
+
   const handleDeleteSideLineTag = (id: string) => {
     const toRemove = getDescendantIdsInclusive(id, sideLineTags);
     const next = sideLineTags.filter((t) => !toRemove.has(t.id));
@@ -1309,6 +1487,41 @@ export const CoverageNotesTab: React.FC = () => {
     if (toRemove.has(selectedFilterSideLineTagId)) {
       setSelectedFilterSideLineTagId('all');
     }
+  };
+
+  const handleAddPoiTag = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newPoiTagName.trim();
+    if (!trimmed) return;
+    const def: PoiTagDefinition = {
+      id: `ptag-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+      name: trimmed,
+      parentId: newPoiTagParentId || null,
+      color: newPoiTagColor,
+    };
+    const next = [...poiTags, def];
+    setPoiTags(next);
+    savePoiTags(next);
+    setNewPoiTagName('');
+  };
+
+  const handleUpdatePoiTag = (
+    id: string,
+    patch: Partial<PoiTagDefinition>
+  ) => {
+    const next = poiTags.map((t) => (t.id === id ? { ...t, ...patch } : t));
+    setPoiTags(next);
+    savePoiTags(next);
+  };
+
+  const handleDeletePoiTag = (id: string) => {
+    const toRemove = getDescendantIdsInclusive(id, poiTags);
+    const next = poiTags.filter((t) => !toRemove.has(t.id));
+    setPoiTags(next);
+    savePoiTags(next);
+    setSelectedFilterPoiTagIds((prev) =>
+      prev.filter((tid) => !toRemove.has(tid))
+    );
   };
 
   const insertTokenIntoBooleanQuery = (token: string) => {
@@ -1367,7 +1580,8 @@ export const CoverageNotesTab: React.FC = () => {
       activeNotebook,
       annotations,
       tagTree,
-      sideLineTags
+      sideLineTags,
+      poiTags
     );
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1398,6 +1612,10 @@ export const CoverageNotesTab: React.FC = () => {
           setSideLineTags(parsed.sideLineTags);
           saveSideLineTags(parsed.sideLineTags);
         }
+        if (Array.isArray(parsed.poiTags)) {
+          setPoiTags(parsed.poiTags);
+          savePoiTags(parsed.poiTags);
+        }
       } catch {
         window.alert('Invalid Coverage Notes JSON file.');
       }
@@ -1411,7 +1629,7 @@ export const CoverageNotesTab: React.FC = () => {
     [svLineColor]
   );
 
-  // Recursive Road Tag Tree Renderer with Auto-Selected Ancestor Propagation
+  // Recursive Road Tag Tree Renderer with Auto-Selected Ancestor Propagation + Inline Re-color & Rename
   const renderTagTreeNodes = (
     parentId: string | null,
     depth: number,
@@ -1440,7 +1658,7 @@ export const CoverageNotesTab: React.FC = () => {
           className="space-y-0.5"
         >
           <div className="flex items-center justify-between gap-1.5 py-0.5 px-1.5 rounded hover:bg-slate-800/70">
-            <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-slate-200 flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
               <input
                 type="checkbox"
                 checked={isChecked}
@@ -1463,23 +1681,48 @@ export const CoverageNotesTab: React.FC = () => {
                 }}
                 className="accent-indigo-500 cursor-pointer"
               />
-              <span
-                className="w-2.5 h-2.5 rounded-full shrink-0"
-                style={{ backgroundColor: node.color }}
-              />
-              <span
-                className={`truncate ${
-                  isAutoAncestor ? 'text-slate-400 italic' : 'text-slate-100'
-                }`}
-              >
-                {node.name}
-              </span>
+              {mode === 'filter' ? (
+                <input
+                  type="color"
+                  value={node.color}
+                  onChange={(e) =>
+                    handleUpdateTagNode(node.id, { color: e.target.value })
+                  }
+                  title="Change tag color"
+                  className="w-3.5 h-3.5 rounded bg-transparent border-0 cursor-pointer shrink-0"
+                />
+              ) : (
+                <span
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: node.color }}
+                />
+              )}
+              {mode === 'filter' ? (
+                <input
+                  type="text"
+                  value={node.name}
+                  onChange={(e) =>
+                    handleUpdateTagNode(node.id, { name: e.target.value })
+                  }
+                  className={`bg-transparent text-[11px] outline-none border-b border-transparent focus:border-slate-600 flex-1 min-w-0 ${
+                    isAutoAncestor ? 'text-slate-400 italic' : 'text-slate-100'
+                  }`}
+                />
+              ) : (
+                <span
+                  className={`truncate text-[11px] ${
+                    isAutoAncestor ? 'text-slate-400 italic' : 'text-slate-100'
+                  }`}
+                >
+                  {node.name}
+                </span>
+              )}
               {isAutoAncestor && (
                 <span className="text-[9px] px-1 rounded bg-slate-800 text-slate-400">
                   auto
                 </span>
               )}
-            </label>
+            </div>
             {mode === 'filter' && (
               <div className="flex items-center gap-1">
                 <button
@@ -1519,7 +1762,7 @@ export const CoverageNotesTab: React.FC = () => {
     });
   };
 
-  // Recursive Side Line Tag Tree Renderer
+  // Recursive Side Line Tag Tree Renderer with Inline Re-color & Rename
   const renderSideLineTagTreeNodes = (
     parentId: string | null,
     depth: number
@@ -1538,23 +1781,38 @@ export const CoverageNotesTab: React.FC = () => {
           className="space-y-0.5"
         >
           <div className="flex items-center justify-between gap-1.5 py-0.5 px-1.5 rounded hover:bg-slate-800/70 text-[11px]">
-            <button
-              type="button"
-              onClick={() =>
-                setSelectedFilterSideLineTagId((prev) =>
-                  prev === node.id ? 'all' : node.id
-                )
-              }
-              className={`flex items-center gap-1.5 text-left flex-1 min-w-0 cursor-pointer ${
-                isFiltered ? 'text-emerald-300 font-bold' : 'text-slate-200'
-              }`}
-            >
-              <span
-                className="w-3 h-1.5 rounded shrink-0"
-                style={{ backgroundColor: node.color }}
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <input
+                type="checkbox"
+                checked={isFiltered}
+                onChange={() =>
+                  setSelectedFilterSideLineTagId((prev) =>
+                    prev === node.id ? 'all' : node.id
+                  )
+                }
+                title="Filter map by this side line tag"
+                className="accent-emerald-500 cursor-pointer"
               />
-              <span className="truncate">{node.name}</span>
-            </button>
+              <input
+                type="color"
+                value={node.color}
+                onChange={(e) =>
+                  handleUpdateSideLineTag(node.id, { color: e.target.value })
+                }
+                title="Change side line tag color"
+                className="w-3.5 h-3.5 rounded bg-transparent border-0 cursor-pointer shrink-0"
+              />
+              <input
+                type="text"
+                value={node.name}
+                onChange={(e) =>
+                  handleUpdateSideLineTag(node.id, { name: e.target.value })
+                }
+                className={`bg-transparent text-[11px] outline-none border-b border-transparent focus:border-slate-600 flex-1 min-w-0 ${
+                  isFiltered ? 'text-emerald-300 font-bold' : 'text-slate-200'
+                }`}
+              />
+            </div>
             <div className="flex items-center gap-1">
               <button
                 type="button"
@@ -1594,6 +1852,161 @@ export const CoverageNotesTab: React.FC = () => {
     });
   };
 
+  // Recursive POI Tag Tree Renderer (with Auto-Selected Ancestor Propagation)
+  const renderPoiTagTreeNodes = (
+    parentId: string | null,
+    depth: number,
+    mode: 'filter' | 'assign-poi' | 'assign-pin',
+    targetPoi?: RoadPointOfInterest
+  ): React.ReactNode => {
+    const children = poiTags.filter((t) => (t.parentId || null) === parentId);
+    if (children.length === 0) return null;
+
+    return children.map((node) => {
+      const currentSelected =
+        mode === 'filter'
+          ? selectedFilterPoiTagIds
+          : mode === 'assign-poi'
+          ? targetPoi?.tagIds || []
+          : selectedAnnotation?.poiTagIds || [];
+      const currentAuto =
+        mode === 'filter'
+          ? autoSelectedFilterPoiTagIds
+          : mode === 'assign-poi'
+          ? targetPoi?.autoSelectedTagIds || []
+          : selectedAnnotation?.autoSelectedPoiTagIds || [];
+
+      const isChecked = currentSelected.includes(node.id);
+      const isAutoAncestor = currentAuto.includes(node.id);
+
+      return (
+        <div
+          key={node.id}
+          style={{ paddingLeft: depth * 12 }}
+          className="space-y-0.5"
+        >
+          <div className="flex items-center justify-between gap-1.5 py-0.5 px-1.5 rounded hover:bg-slate-800/70 text-[11px]">
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <input
+                type="checkbox"
+                checked={isChecked}
+                onChange={() => {
+                  const res = toggleTagWithAutoAncestors(
+                    node.id,
+                    currentSelected,
+                    currentAuto,
+                    poiTags
+                  );
+                  if (mode === 'filter') {
+                    setSelectedFilterPoiTagIds(res.selectedIds);
+                    setAutoSelectedFilterPoiTagIds(res.autoSelectedIds);
+                  } else if (
+                    mode === 'assign-poi' &&
+                    targetPoi &&
+                    selectedAnnotation
+                  ) {
+                    const nextPois = (selectedAnnotation.roadPois || []).map(
+                      (p) =>
+                        p.id === targetPoi.id
+                          ? {
+                              ...p,
+                              tagIds: res.selectedIds,
+                              autoSelectedTagIds: res.autoSelectedIds,
+                            }
+                          : p
+                    );
+                    updateSelectedAnnotation({ roadPois: nextPois });
+                  } else if (mode === 'assign-pin' && selectedAnnotation) {
+                    updateSelectedAnnotation({
+                      poiTagIds: res.selectedIds,
+                      autoSelectedPoiTagIds: res.autoSelectedIds,
+                    });
+                  }
+                }}
+                className="accent-amber-500 cursor-pointer"
+              />
+              {mode === 'filter' ? (
+                <input
+                  type="color"
+                  value={node.color}
+                  onChange={(e) =>
+                    handleUpdatePoiTag(node.id, { color: e.target.value })
+                  }
+                  className="w-3.5 h-3.5 rounded bg-transparent border-0 cursor-pointer shrink-0"
+                />
+              ) : (
+                <span
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: node.color }}
+                />
+              )}
+              {mode === 'filter' ? (
+                <input
+                  type="text"
+                  value={node.name}
+                  onChange={(e) =>
+                    handleUpdatePoiTag(node.id, { name: e.target.value })
+                  }
+                  className={`bg-transparent text-[11px] outline-none border-b border-transparent focus:border-slate-600 flex-1 min-w-0 ${
+                    isAutoAncestor ? 'text-slate-400 italic' : 'text-slate-100'
+                  }`}
+                />
+              ) : (
+                <span
+                  className={`truncate ${
+                    isAutoAncestor ? 'text-slate-400 italic' : 'text-slate-100'
+                  }`}
+                >
+                  {node.name}
+                </span>
+              )}
+              {isAutoAncestor && (
+                <span className="text-[9px] px-1 rounded bg-slate-800 text-slate-400">
+                  auto
+                </span>
+              )}
+            </div>
+            {mode === 'filter' && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  title="Insert into Boolean Query"
+                  onClick={() =>
+                    insertTokenIntoBooleanQuery(
+                      `poi:${
+                        node.name.includes(' ') ? `"${node.name}"` : node.name
+                      }`
+                    )
+                  }
+                  className="px-1 text-[9px] rounded bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white cursor-pointer"
+                >
+                  +Expr
+                </button>
+                <button
+                  type="button"
+                  title={`Add subtag under "${node.name}"`}
+                  onClick={() => setNewPoiTagParentId(node.id)}
+                  className="px-1 text-[10px] rounded bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white cursor-pointer"
+                >
+                  +Sub
+                </button>
+                <button
+                  type="button"
+                  title="Delete POI tag"
+                  onClick={() => handleDeletePoiTag(node.id)}
+                  className="text-slate-500 hover:text-rose-400 cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+          </div>
+          {renderPoiTagTreeNodes(node.id, depth + 1, mode, targetPoi)}
+        </div>
+      );
+    });
+  };
+
   const showRightSidebar =
     showTagManagerPanel || showStreetViewPanel || Boolean(selectedAnnotation);
 
@@ -1602,13 +2015,18 @@ export const CoverageNotesTab: React.FC = () => {
       ? 'w-full lg:w-[360px]'
       : sidebarSize === 'wide'
       ? 'w-full lg:w-[56vw] xl:w-[60vw]'
+      : sidebarSize === 'custom'
+      ? 'w-full'
       : 'w-full lg:w-[460px] xl:w-[520px]';
 
-  // Side lines are only rendered when zoomed in enough (mapZoom >= sideLineMinZoom) or when actively filtering by side line
+  // Side lines and POIs are only rendered when zoomed in enough (or when actively filtered)
   const shouldRenderSideLines =
     mapZoom >= sideLineMinZoom ||
     selectedFilterSideLineTagId !== 'all' ||
     cardinalDirectionFilter !== 'all';
+
+  const shouldRenderPois =
+    mapZoom >= poiMinZoom || explicitFilterPoiTagIds.length > 0;
 
   return (
     <div className="h-[calc(100dvh-3.5rem)] flex flex-col bg-slate-950 text-slate-100 select-none overflow-hidden">
@@ -1767,6 +2185,17 @@ export const CoverageNotesTab: React.FC = () => {
                 Active
               </span>
             )}
+          </button>
+
+          {/* Meta Map / Infographic Image Generator Button */}
+          <button
+            type="button"
+            onClick={() => setShowImageGeneratorModal(true)}
+            title="Generate clean shareable Meta Maps & Infographics for Countries, Subdivisions, or Custom Regions"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-emerald-500/50 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-[11px] font-bold cursor-pointer"
+          >
+            <ImageIcon className="w-3.5 h-3.5" />
+            <span>Generate Map Image</span>
           </button>
 
           <button
@@ -2144,6 +2573,7 @@ export const CoverageNotesTab: React.FC = () => {
               activeTool={activeTool}
               roadSnapSubMode={roadSnapSubMode}
               onZoomChange={setMapZoom}
+              onBoundsChange={setCurrentViewportBounds}
               onMapSingleClick={handleMapSingleClick}
               onMapDoubleClick={() => createSnappedRoadStretch(draftPoints)}
               onFinishDragStroke={handleFinishDragStroke}
@@ -2213,12 +2643,13 @@ export const CoverageNotesTab: React.FC = () => {
                     const sidePolylines: Array<{
                       id: string;
                       color: string;
+                      label?: string;
                       points: Array<[number, number]>;
                     }> = !shouldRenderSideLines
                       ? []
                       : matchingSideSegments !== null
                       ? matchingSideSegments
-                      : (ann.sideLines || [])
+                      : ((ann.sideLines || [])
                           .map((sl, idx) => {
                             const def = sideLineTagById.get(sl.sideLineTagId);
                             const [resolvedStart, resolvedEnd] =
@@ -2231,7 +2662,8 @@ export const CoverageNotesTab: React.FC = () => {
                             if (subPts.length < 2) return null;
                             return {
                               id: sl.id,
-                              color: def?.color || '#f43f5e',
+                              color: sl.customColor || def?.color || '#f43f5e',
+                              label: sl.label,
                               points: offsetPolylinePerpendicular(
                                 subPts,
                                 sl.side,
@@ -2240,15 +2672,12 @@ export const CoverageNotesTab: React.FC = () => {
                               ),
                             };
                           })
-                          .filter(
-                            (
-                              x
-                            ): x is {
-                              id: string;
-                              color: string;
-                              points: Array<[number, number]>;
-                            } => x !== null
-                          );
+                          .filter(Boolean) as Array<{
+                          id: string;
+                          color: string;
+                          label?: string;
+                          points: Array<[number, number]>;
+                        }>);
 
                     return (
                       <React.Fragment key={ann.id}>
@@ -2289,7 +2718,12 @@ export const CoverageNotesTab: React.FC = () => {
                             }}
                             eventHandlers={{
                               click: (e) => {
+                                const orig = e.originalEvent as MouseEvent;
                                 L.DomEvent.stopPropagation(e);
+                                if (activeTool === 'inspect' || orig?.altKey) {
+                                  openStreetViewAt(e.latlng.lat, e.latlng.lng);
+                                  return;
+                                }
                                 if (activeTool === 'eraser') {
                                   deleteAnnotationById(ann.id);
                                 } else if (activeTool === 'road-poi') {
@@ -2322,98 +2756,135 @@ export const CoverageNotesTab: React.FC = () => {
                         )}
 
                         {/* Attached Road Side Lines (only shown when zoomed in >= sideLineMinZoom or filtered) */}
-                        {sidePolylines.map((sl) => (
-                          <React.Fragment key={sl.id}>
-                            {cardinalDirectionFilter !== 'all' && (
+                        {sidePolylines.map((sl) => {
+                          const slMid =
+                            sl.points[Math.floor(sl.points.length / 2)];
+                          return (
+                            <React.Fragment key={sl.id}>
+                              {cardinalDirectionFilter !== 'all' && (
+                                <Polyline
+                                  positions={sl.points}
+                                  pathOptions={{
+                                    color: sl.color,
+                                    weight: 10,
+                                    opacity: 0.35,
+                                  }}
+                                  interactive={false}
+                                />
+                              )}
                               <Polyline
                                 positions={sl.points}
                                 pathOptions={{
                                   color: sl.color,
-                                  weight: 10,
-                                  opacity: 0.35,
+                                  weight:
+                                    cardinalDirectionFilter !== 'all' ? 4.5 : 3,
+                                  opacity: 1,
                                 }}
-                                interactive={false}
+                                eventHandlers={{
+                                  click: (e) => {
+                                    const orig = e.originalEvent as MouseEvent;
+                                    L.DomEvent.stopPropagation(e);
+                                    if (
+                                      activeTool === 'inspect' ||
+                                      orig?.altKey
+                                    ) {
+                                      openStreetViewAt(
+                                        e.latlng.lat,
+                                        e.latlng.lng
+                                      );
+                                      return;
+                                    }
+                                    if (activeTool === 'eraser') {
+                                      const nextSideLines = (
+                                        ann.sideLines || []
+                                      ).filter(
+                                        (item) => !sl.id.startsWith(item.id)
+                                      );
+                                      const nextAnns = annotations.map((a) =>
+                                        a.id === ann.id
+                                          ? { ...a, sideLines: nextSideLines }
+                                          : a
+                                      );
+                                      commitAnnotations(nextAnns);
+                                    } else {
+                                      setSelectedAnnotationId(ann.id);
+                                    }
+                                  },
+                                }}
                               />
-                            )}
-                            <Polyline
-                              positions={sl.points}
-                              pathOptions={{
-                                color: sl.color,
-                                weight:
-                                  cardinalDirectionFilter !== 'all' ? 4.5 : 3,
-                                opacity: 1,
-                              }}
-                              eventHandlers={{
-                                click: (e) => {
-                                  L.DomEvent.stopPropagation(e);
-                                  if (activeTool === 'eraser') {
-                                    const nextSideLines = (
-                                      ann.sideLines || []
-                                    ).filter(
-                                      (item) => !sl.id.startsWith(item.id)
-                                    );
-                                    const nextAnns = annotations.map((a) =>
-                                      a.id === ann.id
-                                        ? { ...a, sideLines: nextSideLines }
-                                        : a
-                                    );
-                                    commitAnnotations(nextAnns);
-                                  } else {
-                                    setSelectedAnnotationId(ann.id);
-                                  }
-                                },
-                              }}
-                            />
-                          </React.Fragment>
-                        ))}
+                              {sl.label && slMid && (
+                                <Marker
+                                  position={slMid}
+                                  icon={L.divIcon({
+                                    className: 'coverage-clean-text-icon',
+                                    html: `<div style="transform:translate(-50%,-115%);white-space:nowrap;font-weight:800;font-size:10px;color:${sl.color};text-shadow:0 0 3px #ffffff,0 0 3px #ffffff;">${sl.label}</div>`,
+                                  })}
+                                  interactive={false}
+                                />
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
 
-                        {/* Points of Interest (POIs) along this Road Stretch — Clean Text (No Rectangle) */}
-                        {(ann.roadPois || []).map((poi) => (
-                          <React.Fragment key={poi.id}>
-                            <CircleMarker
-                              center={poi.position}
-                              radius={5.5}
-                              pathOptions={{
-                                fillColor: poi.color || '#ffffff',
-                                fillOpacity: 1,
-                                color: '#0f172a',
-                                weight: 2,
-                              }}
-                              eventHandlers={{
-                                click: (e) => {
-                                  L.DomEvent.stopPropagation(e);
-                                  if (activeTool === 'eraser') {
-                                    const nextPois = (
-                                      ann.roadPois || []
-                                    ).filter((p) => p.id !== poi.id);
-                                    const nextAnns = annotations.map((a) =>
-                                      a.id === ann.id
-                                        ? { ...a, roadPois: nextPois }
-                                        : a
-                                    );
-                                    commitAnnotations(nextAnns);
-                                  } else {
-                                    setSelectedAnnotationId(ann.id);
-                                  }
-                                },
-                              }}
-                            />
-                            {poi.label && (
-                              <Marker
-                                position={poi.position}
-                                icon={L.divIcon({
-                                  className: 'coverage-clean-text-icon',
-                                  html: `<div style="transform:translate(-50%,-135%);white-space:nowrap;font-weight:800;font-size:11px;color:${
-                                    poi.color || '#0f172a'
-                                  };text-shadow:0 0 4px #ffffff,0 0 4px #ffffff,0 0 3px #ffffff;">${
-                                    poi.label
-                                  }</div>`,
-                                })}
-                                interactive={false}
+                        {/* Points of Interest (POIs) along this Road Stretch — Only shown when zoomed in >= poiMinZoom (or selected / filtered) */}
+                        {(shouldRenderPois || isSelected) &&
+                          (ann.roadPois || []).map((poi) => (
+                            <React.Fragment key={poi.id}>
+                              <CircleMarker
+                                center={poi.position}
+                                radius={5.5}
+                                pathOptions={{
+                                  fillColor: poi.color || '#ffffff',
+                                  fillOpacity: 1,
+                                  color: '#0f172a',
+                                  weight: 2,
+                                }}
+                                eventHandlers={{
+                                  click: (e) => {
+                                    const orig = e.originalEvent as MouseEvent;
+                                    L.DomEvent.stopPropagation(e);
+                                    if (
+                                      activeTool === 'inspect' ||
+                                      orig?.altKey
+                                    ) {
+                                      openStreetViewAt(
+                                        poi.position[0],
+                                        poi.position[1]
+                                      );
+                                      return;
+                                    }
+                                    if (activeTool === 'eraser') {
+                                      const nextPois = (
+                                        ann.roadPois || []
+                                      ).filter((p) => p.id !== poi.id);
+                                      const nextAnns = annotations.map((a) =>
+                                        a.id === ann.id
+                                          ? { ...a, roadPois: nextPois }
+                                          : a
+                                      );
+                                      commitAnnotations(nextAnns);
+                                    } else {
+                                      setSelectedAnnotationId(ann.id);
+                                    }
+                                  },
+                                }}
                               />
-                            )}
-                          </React.Fragment>
-                        ))}
+                              {poi.label && (
+                                <Marker
+                                  position={poi.position}
+                                  icon={L.divIcon({
+                                    className: 'coverage-clean-text-icon',
+                                    html: `<div style="transform:translate(-50%,-135%);white-space:nowrap;font-weight:800;font-size:11px;color:${
+                                      poi.color || '#0f172a'
+                                    };text-shadow:0 0 4px #ffffff,0 0 4px #ffffff,0 0 3px #ffffff;">${
+                                      poi.label
+                                    }</div>`,
+                                  })}
+                                  interactive={false}
+                                />
+                              )}
+                            </React.Fragment>
+                          ))}
 
                         {ann.label && (
                           <Marker
@@ -2630,11 +3101,42 @@ export const CoverageNotesTab: React.FC = () => {
         {/* Right Sidebar: Tags & Filters, Split-Screen Street View & Annotation Inspector */}
         {showRightSidebar && (
           <div
-            className={`${sidebarWidthClass} border-t lg:border-t-0 lg:border-l border-slate-800 bg-slate-900 flex flex-col max-h-[62dvh] lg:max-h-none z-30 overflow-y-auto transition-all`}
+            style={
+              sidebarSize === 'custom'
+                ? { width: `${customSidebarWidthPx}px`, flexShrink: 0 }
+                : undefined
+            }
+            className={`relative ${sidebarWidthClass} border-t lg:border-t-0 lg:border-l border-slate-800 bg-slate-900 flex flex-col max-h-[62dvh] lg:max-h-none z-30 overflow-y-auto transition-all`}
           >
+            {/* Left-edge Drag Handle for Custom Panel Width */}
+            <div
+              onPointerDown={(e) => {
+                e.preventDefault();
+                isResizingSidebarRef.current = true;
+                const onMove = (ev: PointerEvent) => {
+                  if (!isResizingSidebarRef.current) return;
+                  const newWidth = Math.max(
+                    320,
+                    Math.min(window.innerWidth - 260, window.innerWidth - ev.clientX)
+                  );
+                  setCustomSidebarWidthPx(newWidth);
+                  setSidebarSize('custom');
+                };
+                const onUp = () => {
+                  isResizingSidebarRef.current = false;
+                  window.removeEventListener('pointermove', onMove);
+                  window.removeEventListener('pointerup', onUp);
+                };
+                window.addEventListener('pointermove', onMove);
+                window.addEventListener('pointerup', onUp);
+              }}
+              title="Drag left edge to customize panel width"
+              className="hidden lg:block absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500/60 z-40"
+            />
+
             {/* Sidebar Width Toggle Header */}
             <div className="px-3 py-1.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between text-[10px] text-slate-400">
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 flex-wrap">
                 <Maximize2 className="w-3 h-3 text-slate-500" />
                 <span>Panel Width:</span>
                 {(
@@ -2657,6 +3159,11 @@ export const CoverageNotesTab: React.FC = () => {
                     {s.label}
                   </button>
                 ))}
+                {sidebarSize === 'custom' && (
+                  <span className="px-1.5 py-0.5 rounded bg-indigo-600 text-white font-bold">
+                    {customSidebarWidthPx}px
+                  </span>
+                )}
               </div>
               {hasAnyActiveFilter && (
                 <button
@@ -2665,6 +3172,8 @@ export const CoverageNotesTab: React.FC = () => {
                     setBooleanQuery('');
                     setSelectedFilterTagIds([]);
                     setAutoSelectedFilterTagIds([]);
+                    setSelectedFilterPoiTagIds([]);
+                    setAutoSelectedFilterPoiTagIds([]);
                     setFilterYear('all');
                     setFilterMonth('all');
                     setFilterSeason('all');
@@ -2734,7 +3243,7 @@ export const CoverageNotesTab: React.FC = () => {
                     className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-xs font-mono outline-none focus:border-indigo-500"
                   />
                   <div className="text-[10px] text-slate-500 leading-relaxed">
-                    Supports <code>AND</code>, <code>OR</code>, <code>NOT</code>, parentheses <code>(...)</code>, tag names, <code>sideline:name</code>, <code>year:YYYY</code>, <code>month:1..12</code>, <code>season:winter</code>, <code>gen:3</code>, <code>country:XX</code>, <code>region:name</code>. Click <code>+Expr</code> on any tag below to insert it.
+                    Supports <code>AND</code>, <code>OR</code>, <code>NOT</code>, parentheses <code>(...)</code>, tag names, <code>sideline:name</code>, <code>poi:name</code>, <code>year:YYYY</code>, <code>month:1..12</code>, <code>season:winter</code>, <code>gen:3</code>, <code>country:XX</code>, <code>region:name</code>. Click <code>+Expr</code> on any tag below to insert it.
                   </div>
                 </div>
 
@@ -3060,12 +3569,94 @@ export const CoverageNotesTab: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* 5. Hierarchical POI Tag Tree & Min Zoom */}
+                <div className="border-t border-slate-800 pt-2.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-300">
+                      POI TAG TREE & VISIBILITY ZOOM
+                    </span>
+                    <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                      <span>Min Zoom: {poiMinZoom}</span>
+                      <input
+                        type="range"
+                        min={5}
+                        max={14}
+                        step={1}
+                        value={poiMinZoom}
+                        onChange={(e) => setPoiMinZoom(Number(e.target.value))}
+                        title="Minimum map zoom level to display POIs"
+                        className="w-14 accent-indigo-500"
+                      />
+                      {selectedFilterPoiTagIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedFilterPoiTagIds([]);
+                            setAutoSelectedFilterPoiTagIds([]);
+                          }}
+                          className="text-indigo-400 hover:underline cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {poiTags.length === 0 ? (
+                    <div className="text-[11px] text-slate-500 bg-slate-950 p-2 rounded border border-slate-800">
+                      No POI tags created yet. Create POI tags (e.g. for towns, intersections, bridges) to filter or selectively plot POIs in generated maps.
+                    </div>
+                  ) : (
+                    <div className="bg-slate-950 p-2 rounded border border-slate-800 max-h-36 overflow-y-auto space-y-0.5">
+                      {renderPoiTagTreeNodes(null, 0, 'filter')}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleAddPoiTag} className="space-y-1.5 pt-1">
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={newPoiTagName}
+                        onChange={(e) => setNewPoiTagName(e.target.value)}
+                        placeholder="New POI tag name..."
+                        className="flex-1 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-white text-[11px] outline-none"
+                      />
+                      <input
+                        type="color"
+                        value={newPoiTagColor}
+                        onChange={(e) => setNewPoiTagColor(e.target.value)}
+                        className="w-5 h-5 rounded bg-transparent border-0 cursor-pointer"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <select
+                        value={newPoiTagParentId}
+                        onChange={(e) => setNewPoiTagParentId(e.target.value)}
+                        className="flex-1 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-slate-300 text-[11px]"
+                      >
+                        <option value="">Root POI Tag (No Parent)</option>
+                        {poiTags.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            Subtag of: {formatPoiTagHierarchicalLabel(t)}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="submit"
+                        className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] cursor-pointer"
+                      >
+                        +Add POI Tag
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
             )}
 
             {/* Section B: Official Street View Panorama Panel */}
             {showStreetViewPanel && (
-              <div className="flex-1 flex flex-col min-h-[280px] border-b border-slate-800">
+              <div className="flex-1 flex flex-col min-h-[320px] border-b border-slate-800">
                 <div className="px-3 py-2 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
@@ -3138,10 +3729,10 @@ export const CoverageNotesTab: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setUseIframeFallback((v) => !v)}
-                          title="Switch between Distortion-Free Live Viewer and Google Embed"
+                          title="Switch between Google Embed (Default) and Custom Spherical Viewer"
                           className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer"
                         >
-                          {useIframeFallback ? 'Live 360°' : 'Embed'}
+                          {useIframeFallback ? 'Custom 360°' : 'Google Embed'}
                         </button>
 
                         <a
@@ -3164,7 +3755,7 @@ export const CoverageNotesTab: React.FC = () => {
                     <button
                       type="button"
                       onClick={closeTemporaryStreetView}
-                      title="Close Street View (unmarked sphere will disappear)"
+                      title="Close Street View (restores panel width if auto-expanded)"
                       className="p-1 rounded bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
                     >
                       <X className="w-3.5 h-3.5" />
@@ -3172,7 +3763,57 @@ export const CoverageNotesTab: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex-1 relative bg-slate-950 min-h-[260px]">
+                {/* Road Step & Headlight Compass Controls for Embed Mode */}
+                {svMeta && useIframeFallback && (
+                  <div className="px-3 py-1.5 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[10px]">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-slate-400 font-bold">Step Along Road:</span>
+                      {(svMeta.neighborLinks || []).length === 0 ? (
+                        <span className="text-slate-500">Single sphere</span>
+                      ) : (
+                        svMeta.neighborLinks.map((n) => (
+                          <button
+                            key={n.panoId}
+                            type="button"
+                            onClick={async () => {
+                              if (n.lat !== undefined && n.lng !== undefined) {
+                                await openStreetViewAt(n.lat, n.lng);
+                              }
+                            }}
+                            className="px-2 py-0.5 rounded bg-slate-800 hover:bg-indigo-600 text-slate-200 hover:text-white font-bold cursor-pointer"
+                          >
+                            Step {formatCompassDirection(n.headingDeg)}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-slate-400">Aim:</span>
+                      {[
+                        { label: 'N', deg: 0 },
+                        { label: 'E', deg: 90 },
+                        { label: 'S', deg: 180 },
+                        { label: 'W', deg: 270 },
+                        { label: 'Car', deg: svMeta.carHeadingDeg },
+                      ].map((b) => (
+                        <button
+                          key={b.label}
+                          type="button"
+                          onClick={() => setSvViewHeading(b.deg)}
+                          className={`px-1.5 py-0.5 rounded font-bold cursor-pointer ${
+                            Math.abs(((svViewHeading - b.deg + 540) % 360) - 180) < 15
+                              ? 'bg-amber-500 text-slate-950'
+                              : 'bg-slate-800 text-slate-300 hover:text-white'
+                          }`}
+                        >
+                          {b.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex-1 relative bg-slate-950 min-h-[280px]">
                   {svLoading && (
                     <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 z-10 text-xs text-slate-300">
                       Loading official Google Street View panorama...
@@ -3190,6 +3831,7 @@ export const CoverageNotesTab: React.FC = () => {
                       panoNorthDeg={svMeta.panoNorthDeg}
                       viewHeadingDeg={svViewHeading}
                       viewPitchDeg={svViewPitch}
+                      worldSize={svMeta.worldSize}
                       neighborLinks={svMeta.neighborLinks}
                       onChangeViewAngle={(h, p) => {
                         setSvViewHeading(h);
@@ -3290,20 +3932,31 @@ export const CoverageNotesTab: React.FC = () => {
                     </div>
                   )}
 
-                {/* Label Input */}
+                {/* Label & Custom Color Input */}
                 <div className="space-y-1">
                   <label className="block text-[11px] font-bold text-slate-300">
-                    Label
+                    Label & Colour
                   </label>
-                  <input
-                    type="text"
-                    value={selectedAnnotation.label || ''}
-                    onChange={(e) =>
-                      updateSelectedAnnotation({ label: e.target.value })
-                    }
-                    placeholder="Label..."
-                    className="w-full px-2.5 py-1.5 rounded bg-slate-950 border border-slate-800 text-white outline-none focus:border-indigo-500"
-                  />
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="color"
+                      value={selectedAnnotation.color || '#38bdf8'}
+                      onChange={(e) =>
+                        updateSelectedAnnotation({ color: e.target.value })
+                      }
+                      title="Change annotation colour"
+                      className="w-7 h-7 rounded bg-transparent border-0 cursor-pointer shrink-0"
+                    />
+                    <input
+                      type="text"
+                      value={selectedAnnotation.label || ''}
+                      onChange={(e) =>
+                        updateSelectedAnnotation({ label: e.target.value })
+                      }
+                      placeholder="Label..."
+                      className="flex-1 px-2.5 py-1.5 rounded bg-slate-950 border border-slate-800 text-white outline-none focus:border-indigo-500"
+                    />
+                  </div>
                 </div>
 
                 {/* Driving Direction Arrows */}
@@ -3365,6 +4018,8 @@ export const CoverageNotesTab: React.FC = () => {
                               frac,
                               position: pos,
                               color: activeColor,
+                              tagIds: [],
+                              autoSelectedTagIds: [],
                             };
                             updateSelectedAnnotation({
                               roadPois: [...existing, nextPoi].sort(
@@ -3388,7 +4043,7 @@ export const CoverageNotesTab: React.FC = () => {
                           {(selectedAnnotation.roadPois || []).map((poi) => (
                             <div
                               key={poi.id}
-                              className="p-1.5 rounded bg-slate-900 border border-slate-800 space-y-1 text-[11px]"
+                              className="p-2 rounded bg-slate-900 border border-slate-800 space-y-1.5 text-[11px]"
                             >
                               <div className="flex items-center gap-1.5">
                                 <input
@@ -3464,6 +4119,21 @@ export const CoverageNotesTab: React.FC = () => {
                                 }}
                                 className="w-full accent-indigo-500"
                               />
+                              {poiTags.length > 0 && (
+                                <div className="pt-1 border-t border-slate-800/80">
+                                  <div className="text-[10px] text-slate-400 mb-1">
+                                    POI Tags:
+                                  </div>
+                                  <div className="max-h-24 overflow-y-auto space-y-0.5">
+                                    {renderPoiTagTreeNodes(
+                                      null,
+                                      0,
+                                      'assign-poi',
+                                      poi
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -3471,7 +4141,7 @@ export const CoverageNotesTab: React.FC = () => {
                     </div>
                   )}
 
-                {/* Road Stretch Side Lines Manager */}
+                {/* Road Stretch Side Lines Manager (Nameable & Re-colourable after creation) */}
                 {selectedAnnotation.type === 'road-stretch' && (
                   <div className="space-y-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
                     <div className="flex items-center justify-between">
@@ -3532,6 +4202,8 @@ export const CoverageNotesTab: React.FC = () => {
 
                     {(selectedAnnotation.sideLines || []).map((sl) => {
                       const def = sideLineTagById.get(sl.sideLineTagId);
+                      const effectiveColor =
+                        sl.customColor || def?.color || '#ffffff';
                       const pois = selectedAnnotation.roadPois || [];
                       const [effStart, effEnd] = resolveSideLineFractions(
                         sl,
@@ -3556,9 +4228,9 @@ export const CoverageNotesTab: React.FC = () => {
                                 );
                                 updateSelectedAnnotation({ sideLines: next });
                               }}
-                              className="bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-white font-bold"
+                              className="bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-white font-bold flex-1 min-w-0"
                               style={{
-                                borderLeft: `4px solid ${def?.color || '#fff'}`,
+                                borderLeft: `4px solid ${effectiveColor}`,
                               }}
                             >
                               {sideLineTags.map((t) => (
@@ -3568,7 +4240,7 @@ export const CoverageNotesTab: React.FC = () => {
                               ))}
                             </select>
 
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1 shrink-0">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -3604,6 +4276,65 @@ export const CoverageNotesTab: React.FC = () => {
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
+                          </div>
+
+                          {/* Custom Name / Label & Custom Colour Override for this Side Line */}
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="color"
+                              value={effectiveColor}
+                              onChange={(e) => {
+                                const next = (
+                                  selectedAnnotation.sideLines || []
+                                ).map((item) =>
+                                  item.id === sl.id
+                                    ? { ...item, customColor: e.target.value }
+                                    : item
+                                );
+                                updateSelectedAnnotation({ sideLines: next });
+                              }}
+                              title="Re-colour this side line"
+                              className="w-5 h-5 rounded bg-transparent border-0 cursor-pointer shrink-0"
+                            />
+                            <input
+                              type="text"
+                              value={sl.label ?? ''}
+                              onChange={(e) => {
+                                const next = (
+                                  selectedAnnotation.sideLines || []
+                                ).map((item) =>
+                                  item.id === sl.id
+                                    ? { ...item, label: e.target.value }
+                                    : item
+                                );
+                                updateSelectedAnnotation({ sideLines: next });
+                              }}
+                              placeholder={
+                                def
+                                  ? `Custom name (default: ${def.name})...`
+                                  : 'Side line name...'
+                              }
+                              className="flex-1 px-2 py-0.5 rounded bg-slate-950 border border-slate-700 text-white text-[11px] outline-none"
+                            />
+                            {sl.customColor && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = (
+                                    selectedAnnotation.sideLines || []
+                                  ).map((item) =>
+                                    item.id === sl.id
+                                      ? { ...item, customColor: undefined }
+                                      : item
+                                  );
+                                  updateSelectedAnnotation({ sideLines: next });
+                                }}
+                                title="Reset to tag default colour"
+                                className="text-[10px] text-slate-400 hover:text-white cursor-pointer"
+                              >
+                                Reset
+                              </button>
+                            )}
                           </div>
 
                           {pois.length > 0 && (
@@ -3784,21 +4515,33 @@ export const CoverageNotesTab: React.FC = () => {
                   </div>
                 )}
 
-                {/* Sketch Canvas for Pins */}
+                {/* Sketch Canvas & POI Tags for Pins */}
                 {selectedAnnotation.type === 'pin' && (
-                  <PinSketchCanvas
-                    value={selectedAnnotation.sketchDataUrl}
-                    onChange={(dataUrl) =>
-                      updateSelectedAnnotation({ sketchDataUrl: dataUrl })
-                    }
-                  />
+                  <>
+                    <PinSketchCanvas
+                      value={selectedAnnotation.sketchDataUrl}
+                      onChange={(dataUrl) =>
+                        updateSelectedAnnotation({ sketchDataUrl: dataUrl })
+                      }
+                    />
+                    {poiTags.length > 0 && (
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300">
+                          Assigned POI Tags
+                        </label>
+                        <div className="bg-slate-950 p-2 rounded border border-slate-800 max-h-28 overflow-y-auto">
+                          {renderPoiTagTreeNodes(null, 0, 'assign-pin')}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {/* Assign Tags from Tag Tree (with Auto-Selected Ancestor Propagation) */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <label className="text-[11px] font-bold text-slate-300">
-                      Assigned Tags
+                      Assigned Road Tags
                     </label>
                     <button
                       type="button"
@@ -3839,6 +4582,17 @@ export const CoverageNotesTab: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Meta Map & Infographic Image Generator Modal */}
+      <CoverageMapGeneratorModal
+        isOpen={showImageGeneratorModal}
+        onClose={() => setShowImageGeneratorModal(false)}
+        annotations={annotations}
+        tagTree={tagTree}
+        sideLineTags={sideLineTags}
+        poiTags={poiTags}
+        currentViewportBounds={currentViewportBounds}
+      />
     </div>
   );
 };

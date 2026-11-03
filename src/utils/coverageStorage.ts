@@ -5,6 +5,7 @@ import type {
   CoverageSeason,
   CoverageTagNode,
   OfficialStreetViewMetadata,
+  PoiTagDefinition,
   RoadAutoMetaSpan,
   SideLineTagDefinition,
 } from '../types/coverageNotes';
@@ -13,6 +14,7 @@ const NOTEBOOKS_KEY = 'geo_coverage_notebooks_v2';
 const ANNOTATIONS_PREFIX = 'geo_coverage_annotations_v2_';
 const TAG_TREE_KEY = 'geo_coverage_tag_tree_v1';
 const SIDE_LINE_TAGS_KEY = 'geo_coverage_side_line_tags_v1';
+const POI_TAGS_KEY = 'geo_coverage_poi_tags_v1';
 const SV_STYLE_KEY = 'geo_coverage_sv_style_v1';
 
 const DEFAULT_NOTEBOOKS: CoverageNotebook[] = [
@@ -32,6 +34,7 @@ export interface SvCoverageStylePrefs {
   opacity: number;
   visible: boolean;
   sideLineMinZoom: number;
+  poiMinZoom: number;
 }
 
 export function loadSvCoverageStylePrefs(): SvCoverageStylePrefs {
@@ -45,12 +48,20 @@ export function loadSvCoverageStylePrefs(): SvCoverageStylePrefs {
         visible: typeof parsed.visible === 'boolean' ? parsed.visible : true,
         sideLineMinZoom:
           typeof parsed.sideLineMinZoom === 'number' ? parsed.sideLineMinZoom : 9,
+        poiMinZoom:
+          typeof parsed.poiMinZoom === 'number' ? parsed.poiMinZoom : 9,
       };
     }
   } catch {
     // ignore
   }
-  return { color: '#38bdf8', opacity: 0.3, visible: true, sideLineMinZoom: 9 };
+  return {
+    color: '#38bdf8',
+    opacity: 0.3,
+    visible: true,
+    sideLineMinZoom: 9,
+    poiMinZoom: 9,
+  };
 }
 
 export function saveSvCoverageStylePrefs(prefs: SvCoverageStylePrefs): void {
@@ -96,6 +107,27 @@ export function loadSideLineTags(): SideLineTagDefinition[] {
 export function saveSideLineTags(tags: SideLineTagDefinition[]): void {
   try {
     localStorage.setItem(SIDE_LINE_TAGS_KEY, JSON.stringify(tags));
+  } catch {
+    // ignore
+  }
+}
+
+export function loadPoiTags(): PoiTagDefinition[] {
+  try {
+    const raw = localStorage.getItem(POI_TAGS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as PoiTagDefinition[];
+    return Array.isArray(parsed)
+      ? parsed.map((t) => ({ ...t, parentId: t.parentId ?? null }))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function savePoiTags(tags: PoiTagDefinition[]): void {
+  try {
+    localStorage.setItem(POI_TAGS_KEY, JSON.stringify(tags));
   } catch {
     // ignore
   }
@@ -156,13 +188,15 @@ export interface CoverageExportBundle {
   annotations: CoverageAnnotation[];
   tagTree?: CoverageTagNode[];
   sideLineTags?: SideLineTagDefinition[];
+  poiTags?: PoiTagDefinition[];
 }
 
 export function exportNotebookJson(
   notebook: CoverageNotebook,
   annotations: CoverageAnnotation[],
   tagTree: CoverageTagNode[],
-  sideLineTags: SideLineTagDefinition[]
+  sideLineTags: SideLineTagDefinition[],
+  poiTags: PoiTagDefinition[]
 ): string {
   const bundle: CoverageExportBundle = {
     version: 2,
@@ -171,6 +205,7 @@ export function exportNotebookJson(
     annotations,
     tagTree,
     sideLineTags,
+    poiTags,
   };
   return JSON.stringify(bundle, null, 2);
 }

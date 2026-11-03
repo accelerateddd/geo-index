@@ -4,6 +4,7 @@ import type {
   CoverageAnnotation,
   CoverageSeason,
   CoverageTagNode,
+  PoiTagDefinition,
   RoadAutoMetaSpan,
   SideLineTagDefinition,
 } from '../types/coverageNotes';
@@ -89,6 +90,7 @@ export interface FilterContext {
   span?: RoadAutoMetaSpan;
   tagTree: CoverageTagNode[];
   sideLineTags: SideLineTagDefinition[];
+  poiTags?: PoiTagDefinition[];
   matchingSideTagIds?: Set<string>;
 }
 
@@ -264,8 +266,31 @@ function evaluateSingleTerm(term: string, ctx: FilterContext): boolean {
           allowedIds.add(id);
         }
       }
-      return (ann.sideLines || []).some((sl) =>
-        allowedIds.has(sl.sideLineTagId)
+      return (ann.sideLines || []).some(
+        (sl) =>
+          allowedIds.has(sl.sideLineTagId) ||
+          Boolean(sl.label && sl.label.toLowerCase().includes(val))
+      );
+    }
+
+    if (prefix === 'poi') {
+      const poiTree = ctx.poiTags || [];
+      const matchedPoiTags = poiTree.filter(
+        (t) => t.name.toLowerCase() === val || t.id.toLowerCase() === val
+      );
+      const allowedPoiTagIds = new Set<string>();
+      for (const pt of matchedPoiTags) {
+        for (const id of getDescendantIdsInclusive(pt.id, poiTree)) {
+          allowedPoiTagIds.add(id);
+        }
+      }
+      if ((ann.poiTagIds || []).some((id) => allowedPoiTagIds.has(id))) {
+        return true;
+      }
+      return (ann.roadPois || []).some(
+        (p) =>
+          p.label.toLowerCase().includes(val) ||
+          (p.tagIds || []).some((id) => allowedPoiTagIds.has(id))
       );
     }
 

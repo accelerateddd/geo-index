@@ -42,6 +42,13 @@ export interface SideLineTagDefinition {
   color: string;
 }
 
+export interface PoiTagDefinition {
+  id: string;
+  name: string;
+  parentId: string | null;
+  color: string;
+}
+
 export interface RoadPointOfInterest {
   id: string;
   label: string;
@@ -50,12 +57,20 @@ export interface RoadPointOfInterest {
   /** Snapped [lat, lng] coordinate on the parent road stretch */
   position: [number, number];
   color: string;
+  /** Hierarchical POI tag IDs assigned to this POI */
+  tagIds?: string[];
+  /** POI tag IDs that were auto-selected because a child POI tag was selected */
+  autoSelectedTagIds?: string[];
   notes?: string;
 }
 
 export interface RoadSideLineAttachment {
   id: string;
   sideLineTagId: string;
+  /** Optional custom name/label for this specific road side line */
+  label?: string;
+  /** Optional custom color override for this specific road side line */
+  customColor?: string;
   /** 'left' or 'right' looking along the road stretch from start (0) to end (1) */
   side: 'left' | 'right';
   /** Normalized arc-length start along the road stretch [0..1] */
@@ -117,6 +132,9 @@ export interface CoverageAnnotation {
   tagIds?: string[];
   /** Tag IDs that were auto-selected only because a lower-level descendant tag was selected */
   autoSelectedTagIds?: string[];
+  /** Assigned POI tag IDs (when a Pin/POI is tagged directly) */
+  poiTagIds?: string[];
+  autoSelectedPoiTagIds?: string[];
   /** Points of interest along this road stretch */
   roadPois?: RoadPointOfInterest[];
   /** Attached side lines along segments of this road stretch */

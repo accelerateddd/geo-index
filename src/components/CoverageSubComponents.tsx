@@ -16,6 +16,7 @@ export function formatCompassDirection(deg: number): string {
  */
 export const StreetViewSphericalViewer: React.FC<{
   panoId: string;
+  worldSize?: [number, number];
   carHeadingDeg: number;
   panoNorthDeg: number;
   viewHeadingDeg: number;
@@ -30,6 +31,7 @@ export const StreetViewSphericalViewer: React.FC<{
   }) => void;
 }> = ({
   panoId,
+  worldSize,
   panoNorthDeg,
   viewHeadingDeg,
   viewPitchDeg,
@@ -41,6 +43,7 @@ export const StreetViewSphericalViewer: React.FC<{
   // Default 46° natural lens FOV to eliminate wide-angle fisheye stretching
   const [fovDeg, setFovDeg] = useState<number>(46);
   const [tilesLoaded, setTilesLoaded] = useState<number>(0);
+  const [viewportTick, setViewportTick] = useState<number>(0);
   const isDraggingRef = useRef<boolean>(false);
   const dragStartRef = useRef<{
     x: number;
@@ -50,14 +53,37 @@ export const StreetViewSphericalViewer: React.FC<{
   }>({ x: 0, y: 0, heading: 0, pitch: 0 });
   const panoCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Load zoom=2 immediately for instant display, then overlay sharp zoom=3 tiles (3328x1664)
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      setViewportTick((t) => t + 1);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Compute exact equirectangular dimensions at zoom=3 based on camera generation worldSize
+  // Gen 4 ([8192, 16384]) -> zoom=3 is 4096x2048 (8x4 tiles)
+  // Gen 2/3 ([6656, 13312]) -> zoom=3 is 3328x1664 (7x4 tiles)
+  // Gen 1 ([1664, 3328]) -> zoom=3 is 3328x1664 (7x4 tiles)
   useEffect(() => {
     let cancelled = false;
     setTilesLoaded(0);
 
+    const fullH = worldSize?.[0] ?? 6656;
+    const fullW = worldSize?.[1] ?? 13312;
+    const isGen1 = fullW <= 3584;
+    const zoomLevel = 3;
+    const scaleDown = isGen1 ? 1 : Math.pow(2, 5 - zoomLevel); // 4 for Gen 2/3/4
+    const panoW = Math.max(2048, Math.round(fullW / scaleDown));
+    const panoH = Math.max(1024, Math.round(fullH / scaleDown));
+    const cols = Math.ceil(panoW / 512);
+    const rows = Math.ceil(panoH / 512);
+
     const offscreen = document.createElement('canvas');
-    offscreen.width = 3328;
-    offscreen.height = 1664;
+    offscreen.width = panoW;
+    offscreen.height = panoH;
     const ctx = offscreen.getContext('2d');
     panoCanvasRef.current = offscreen;
 
@@ -66,26 +92,8 @@ export const StreetViewSphericalViewer: React.FC<{
     ctx.fillRect(0, 0, offscreen.width, offscreen.height);
 
     let loadedCount = 0;
-    // Fast preview pass (zoom=2 scaled up 2x)
-    for (let y = 0; y < 2; y++) {
-      for (let x = 0; x < 4; x++) {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          if (cancelled) return;
-          ctx.drawImage(img, x * 1024, y * 1024, 1024, 1024);
-          loadedCount++;
-          setTilesLoaded(loadedCount);
-        };
-        img.src = `https://streetviewpixels-pa.googleapis.com/v1/tile?cb_client=maps_sv.tactile&panoid=${encodeURIComponent(
-          panoId
-        )}&x=${x}&y=${y}&zoom=2&nbt=1&fover=2`;
-      }
-    }
-
-    // High-resolution pass (zoom=3: 7x4 tiles of 512x512 -> 3328x1664)
-    for (let y = 0; y < 4; y++) {
-      for (let x = 0; x < 7; x++) {
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
@@ -96,14 +104,14 @@ export const StreetViewSphericalViewer: React.FC<{
         };
         img.src = `https://streetviewpixels-pa.googleapis.com/v1/tile?cb_client=maps_sv.tactile&panoid=${encodeURIComponent(
           panoId
-        )}&x=${x}&y=${y}&zoom=3&nbt=1&fover=2`;
+        )}&x=${x}&y=${y}&zoom=${zoomLevel}&nbt=1&fover=2`;
       }
     }
 
     return () => {
       cancelled = true;
     };
-  }, [panoId]);
+  }, [panoId, worldSize]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -111,8 +119,10 @@ export const StreetViewSphericalViewer: React.FC<{
     if (!canvas || !srcCanvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const width = Math.max(260, Math.min(720, Math.floor(rect.width)));
-    const height = Math.max(220, Math.min(600, Math.floor(rect.height)));
+    // Match exact aspect ratio of container so wide panels never stretch horizontally
+    const aspect = rect.height > 10 ? rect.width / rect.height : 1.5;
+    const height = Math.max(220, Math.min(540, Math.floor(rect.height)));
+    const width = Math.max(260, Math.min(1100, Math.round(height * aspect)));
     if (canvas.width !== width || canvas.height !== height) {
       canvas.width = width;
       canvas.height = height;
@@ -188,7 +198,15 @@ export const StreetViewSphericalViewer: React.FC<{
     }
 
     ctx.putImageData(dstData, 0, 0);
-  }, [panoId, panoNorthDeg, viewHeadingDeg, viewPitchDeg, fovDeg, tilesLoaded]);
+  }, [
+    panoId,
+    panoNorthDeg,
+    viewHeadingDeg,
+    viewPitchDeg,
+    fovDeg,
+    tilesLoaded,
+    viewportTick,
+  ]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     isDraggingRef.current = true;
